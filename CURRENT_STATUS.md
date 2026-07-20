@@ -157,6 +157,7 @@ Current behavior:
 - Expanded playback is player-only; browsing Shows exits the overlay to the normal podcast page so the mini player remains available.
 - The full player has a Shows control, and its podcast title opens that show's episode list.
 - Player supports play/pause, scrub, previous/next episode, skip back/forward, playback speed, and capture.
+- Timeline scrubbing is guarded from stale playback events and persists the browser-confirmed seek position.
 - Playback speed options are `0.8x`, `0.85x`, `0.9x`, `0.95x`, and `1x`.
 - Finishing an episode advances to the next episode instead of looping.
 - Podcast playback is suspended before voice capture opens the microphone and the audio element is rebuilt afterward so iOS audio-session changes do not leave podcast audio unusable.

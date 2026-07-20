@@ -45,6 +45,7 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
   const lastTrackedAtMsRef = useRef<number | null>(null);
   const playbackRef = useRef<CurrentEpisodePlayback | null>(null);
   const isChangingEpisodeRef = useRef(false);
+  const isSeekingRef = useRef(false);
   const completedEpisodeIdRef = useRef<string | null>(null);
   const [playback, setPlayback] = useState<CurrentEpisodePlayback | null>(() =>
     loadCurrentEpisodePlayback(),
@@ -233,14 +234,25 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
   const seek = useCallback(
     (positionMs: number) => {
       const audio = audioRef.current;
+      const currentPlayback = playbackRef.current;
+      const durationMs = currentPlayback?.durationMs;
+      const targetPositionMs = Math.max(
+        0,
+        durationMs ? Math.min(positionMs, durationMs) : positionMs,
+      );
 
       if (audio) {
-        audio.currentTime = positionMs / 1000;
+        isSeekingRef.current = true;
+        audio.currentTime = targetPositionMs / 1000;
       }
 
-      lastTrackedPositionMsRef.current = positionMs;
+      lastTrackedPositionMsRef.current = targetPositionMs;
       lastTrackedAtMsRef.current = Date.now();
-      updatePlayback((current) => ({ ...current, positionMs }));
+      updatePlayback((current) => ({
+        ...current,
+        positionMs: targetPositionMs,
+        updatedAt: new Date().toISOString(),
+      }));
     },
     [updatePlayback],
   );
@@ -338,8 +350,33 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
           lastTrackedAtMsRef.current = Date.now();
           updatePlayback((current) => ({ ...current, isPlaying: true }));
         }}
+        onSeeking={() => {
+          isSeekingRef.current = true;
+        }}
+        onSeeked={(event) => {
+          const confirmedPositionMs = Math.floor(event.currentTarget.currentTime * 1000);
+          const currentPlayback = playbackRef.current;
+
+          isSeekingRef.current = false;
+          lastTrackedPositionMsRef.current = confirmedPositionMs;
+          lastTrackedAtMsRef.current = Date.now();
+          updatePlayback((current) => ({
+            ...current,
+            positionMs: confirmedPositionMs,
+            updatedAt: new Date().toISOString(),
+          }));
+          if (currentPlayback) {
+            saveEpisodePlaybackProgress({
+              episodeId: currentPlayback.episodeId,
+              podcastId: currentPlayback.podcastId,
+              positionMs: confirmedPositionMs,
+              durationMs: currentPlayback.durationMs,
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        }}
         onTimeUpdate={(event) => {
-          if (isChangingEpisodeRef.current) {
+          if (isChangingEpisodeRef.current || isSeekingRef.current) {
             return;
           }
 
