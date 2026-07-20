@@ -1,0 +1,15 @@
+node_modules
+.tools
+.next
+.next-dev.log
+.next-dev.err.log
+out
+dist
+coverage
+.vercel
+.env
+.env*.local
+*.tsbuildinfo
+next-env.d.ts
+
+.vercel
