@@ -613,12 +613,28 @@ function FullPlayer({
   return (
     <section className="pt-6">
       {playback.artworkUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={playback.artworkUrl}
-          alt=""
-          className="mx-auto aspect-square w-56 max-w-[62vw] rounded-xl object-cover shadow-[0_20px_70px_rgb(0_0_0/0.45)]"
-        />
+        onOpenShow ? (
+          <button
+            type="button"
+            onClick={onOpenShow}
+            className="mx-auto block rounded-xl outline-none transition-transform active:scale-[0.98] focus:ring-4 focus:ring-white/25 motion-reduce:transition-none"
+            aria-label={`Open episodes for ${playback.podcastTitle}`}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={playback.artworkUrl}
+              alt={`${playback.podcastTitle} cover`}
+              className="aspect-square w-56 max-w-[62vw] rounded-xl object-cover shadow-[0_20px_70px_rgb(0_0_0/0.45)]"
+            />
+          </button>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={playback.artworkUrl}
+            alt=""
+            className="mx-auto aspect-square w-56 max-w-[62vw] rounded-xl object-cover shadow-[0_20px_70px_rgb(0_0_0/0.45)]"
+          />
+        )
       ) : null}
       <p className="mt-8 text-sm text-[#f8f1b8]/80">{formatDateLabel(playback.updatedAt)}</p>
       <div className="mt-1 flex items-start justify-between gap-3">
@@ -1088,13 +1104,13 @@ function PodcastArtwork({
 
 function getMediaShellClassName(isEmbedded: boolean) {
   return isEmbedded
-    ? "h-full overflow-y-auto bg-[#202124] px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] pt-[calc(1.25rem+env(safe-area-inset-top))] text-[#f8f9fb]"
-    : "fixed inset-0 z-50 overflow-y-auto bg-[#202124] px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] pt-[calc(1.25rem+env(safe-area-inset-top))] text-[#f8f9fb]";
+    ? "kotoba-screen-enter h-full overflow-y-auto overscroll-contain bg-[#202124] px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] pt-[calc(1.25rem+env(safe-area-inset-top))] text-[#f8f9fb]"
+    : "kotoba-screen-enter fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-[#202124] px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] pt-[calc(1.25rem+env(safe-area-inset-top))] text-[#f8f9fb]";
 }
 
 function getPlayerShellClassName(isEmbedded: boolean) {
   const base =
-    "overflow-y-auto bg-[radial-gradient(circle_at_top,#80694f_0%,#3d3326_42%,#101113_100%)] px-6 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] text-[#f8f9fb]";
+    "kotoba-screen-enter overflow-y-auto overscroll-contain bg-[radial-gradient(circle_at_top,#80694f_0%,#3d3326_42%,#101113_100%)] px-6 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] text-[#f8f9fb]";
 
   return isEmbedded ? `h-full ${base}` : `fixed inset-0 z-50 ${base}`;
 }

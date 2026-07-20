@@ -28,3 +28,25 @@ a {
   text-decoration: none;
 }
 
+@keyframes kotoba-screen-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.kotoba-screen-enter {
+  animation: kotoba-screen-enter 180ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kotoba-screen-enter {
+    animation: none;
+  }
+}
+
