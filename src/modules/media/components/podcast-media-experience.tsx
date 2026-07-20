@@ -632,7 +632,7 @@ function PodcastHeader({
 
 function DifficultyBadge({ difficulty }: { difficulty: NonNullable<PodcastSource["difficulty"]> }) {
   const labels: Record<NonNullable<PodcastSource["difficulty"]>, string> = {
-    1: "Guided beginner",
+    1: "Beginner immersion",
     2: "Beginner",
     3: "Accessible native",
     4: "Native conversational",
