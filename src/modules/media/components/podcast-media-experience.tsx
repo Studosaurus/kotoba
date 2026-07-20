@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import type { RssPodcastFeed } from "@/connectors/rss/types";
 import {
   getDailyAchievementRating,
@@ -39,10 +40,7 @@ import {
   saveUserPodcast,
 } from "../local/local-media-store";
 
-type MediaView =
-  | { name: "library" }
-  | PodcastView
-  | { name: "player"; previous?: PodcastView };
+type MediaView = { name: "library" } | PodcastView | { name: "player"; previous?: PodcastView };
 
 type PodcastView = {
   name: "podcast";
@@ -91,7 +89,7 @@ export function PodcastMediaExperience({
     }
 
     return podcasts.filter((podcast) =>
-      [podcast.title, podcast.description, podcast.feedUrl]
+      [podcast.title, podcast.description, podcast.feedUrl, ...(podcast.learningFeatures ?? [])]
         .join(" ")
         .toLowerCase()
         .includes(normalizedQuery),
@@ -119,7 +117,9 @@ export function PodcastMediaExperience({
 
       const metadataById = new Map(
         results
-          .filter((result): result is { podcast: PodcastSource; feed: RssPodcastFeed } => Boolean(result))
+          .filter((result): result is { podcast: PodcastSource; feed: RssPodcastFeed } =>
+            Boolean(result),
+          )
           .map((result) => [result.podcast.id, result.feed]),
       );
 
@@ -169,16 +169,15 @@ export function PodcastMediaExperience({
 
     const scheduleMidnightRefresh = () => {
       const now = new Date();
-      const nextMidnight = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate() + 1,
-      );
+      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
 
-      midnightTimeoutId = window.setTimeout(() => {
-        setStatsVersion((version) => version + 1);
-        scheduleMidnightRefresh();
-      }, nextMidnight.getTime() - now.getTime() + 100);
+      midnightTimeoutId = window.setTimeout(
+        () => {
+          setStatsVersion((version) => version + 1);
+          scheduleMidnightRefresh();
+        },
+        nextMidnight.getTime() - now.getTime() + 100,
+      );
     };
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") {
@@ -221,18 +220,22 @@ export function PodcastMediaExperience({
   };
 
   useEffect(() => {
-    if (initialView !== "player" || !player.playback?.feedUrl || view.name !== "player" || playerHasPreviousView) {
+    if (
+      initialView !== "player" ||
+      !player.playback?.feedUrl ||
+      view.name !== "player" ||
+      playerHasPreviousView
+    ) {
       return;
     }
 
-    const source =
-      podcasts.find((podcast) => podcast.id === player.playback?.podcastId) ?? {
-        id: player.playback.podcastId,
-        title: player.playback.podcastTitle,
-        imageUrl: player.playback.artworkUrl,
-        feedUrl: player.playback.feedUrl,
-        source: "user" as const,
-      };
+    const source = podcasts.find((podcast) => podcast.id === player.playback?.podcastId) ?? {
+      id: player.playback.podcastId,
+      title: player.playback.podcastTitle,
+      imageUrl: player.playback.artworkUrl,
+      feedUrl: player.playback.feedUrl,
+      source: "user" as const,
+    };
 
     let isCancelled = false;
 
@@ -263,11 +266,7 @@ export function PodcastMediaExperience({
   }, [initialView, player.playback, podcasts, view.name, playerHasPreviousView]);
 
   useEffect(() => {
-    if (
-      !initialPodcastId ||
-      hasConsumedInitialPodcastRef.current ||
-      view.name !== "library"
-    ) {
+    if (!initialPodcastId || hasConsumedInitialPodcastRef.current || view.name !== "library") {
       return;
     }
 
@@ -506,9 +505,14 @@ export function PodcastMediaExperience({
                       {podcast.description}
                     </p>
                   ) : null}
-                  <p className="mt-1 text-xs text-[#9aa0a6]">
-                    {podcast.source === "curated" ? "Default" : "Added"}
-                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {podcast.difficulty ? (
+                      <DifficultyBadge difficulty={podcast.difficulty} />
+                    ) : null}
+                    {podcast.availability === "archive" ? (
+                      <PodcastBadge>Archive</PodcastBadge>
+                    ) : null}
+                  </div>
                 </div>
               </button>
             ))}
@@ -567,7 +571,7 @@ function PodcastHeader({
 
   return (
     <section className="-mx-4 -mt-5 bg-[linear-gradient(180deg,#6f5a49_0%,#302a27_52%,#202124_100%)] px-4 pb-5 pt-5">
-      <label className="flex h-14 items-center gap-3 rounded-md bg-white/12 px-3 text-[#f8f9fb] backdrop-blur">
+      <label className="bg-white/12 flex h-14 items-center gap-3 rounded-md px-3 text-[#f8f9fb] backdrop-blur">
         <Search className="h-5 w-5 shrink-0" aria-hidden="true" />
         <span className="sr-only">Search within this show</span>
         <input
@@ -580,33 +584,77 @@ function PodcastHeader({
 
       <div className="mt-7 flex items-end gap-5">
         <div className="w-32 shrink-0">
-          <PodcastArtwork title={feed?.title ?? podcast.title} imageUrl={feed?.imageUrl ?? podcast.imageUrl} hero />
+          <PodcastArtwork
+            title={feed?.title ?? podcast.title}
+            imageUrl={feed?.imageUrl ?? podcast.imageUrl}
+            hero
+          />
         </div>
         <div className="min-w-0 flex-1 pb-1">
-          <h2 className="text-3xl font-bold leading-tight text-[#f8f9fb]">{feed?.title ?? podcast.title}</h2>
-          {feed?.description ?? podcast.description ? (
+          <h2 className="text-3xl font-bold leading-tight text-[#f8f9fb]">
+            {feed?.title ?? podcast.title}
+          </h2>
+          {(feed?.description ?? podcast.description) ? (
             <p className="mt-3 line-clamp-2 text-sm font-medium leading-5 text-white/75">
               {feed?.description ?? podcast.description}
             </p>
           ) : null}
+          <div className="mt-3 flex flex-wrap gap-2">
+            {podcast.difficulty ? <DifficultyBadge difficulty={podcast.difficulty} /> : null}
+            {podcast.availability === "archive" ? (
+              <PodcastBadge>Community archive</PodcastBadge>
+            ) : null}
+          </div>
         </div>
       </div>
 
+      {podcast.learningFeatures?.length ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {podcast.learningFeatures.map((feature) => (
+            <PodcastBadge key={feature}>{feature}</PodcastBadge>
+          ))}
+        </div>
+      ) : null}
+
+      {podcast.attribution ? (
+        <p className="mt-3 text-xs text-white/60">{podcast.attribution}</p>
+      ) : null}
+
       <div className="mt-5 flex items-center gap-4 text-sm font-semibold text-white/75">
         <span>{feed?.episodes.length ?? 0} episodes</span>
-        {latestEpisode?.publishedAt ? <span>Updated {formatDateLabel(latestEpisode.publishedAt)}</span> : null}
+        {latestEpisode?.publishedAt ? (
+          <span>Updated {formatDateLabel(latestEpisode.publishedAt)}</span>
+        ) : null}
       </div>
     </section>
   );
 }
 
-function FullPlayer({
-  onCapture,
-  onOpenShow,
-}: {
-  onCapture(): void;
-  onOpenShow?: () => void;
-}) {
+function DifficultyBadge({ difficulty }: { difficulty: NonNullable<PodcastSource["difficulty"]> }) {
+  const labels: Record<NonNullable<PodcastSource["difficulty"]>, string> = {
+    1: "Guided beginner",
+    2: "Beginner",
+    3: "Accessible native",
+    4: "Native conversational",
+    5: "Dense native",
+  };
+
+  return (
+    <PodcastBadge>
+      Level {difficulty} · {labels[difficulty]}
+    </PodcastBadge>
+  );
+}
+
+function PodcastBadge({ children }: { children: ReactNode }) {
+  return (
+    <span className="inline-flex min-h-6 items-center rounded-full bg-[#30343b] px-2.5 py-1 text-[11px] font-semibold leading-4 text-[#d7e3f8]">
+      {children}
+    </span>
+  );
+}
+
+function FullPlayer({ onCapture, onOpenShow }: { onCapture(): void; onOpenShow?: () => void }) {
   const player = useMediaPlayer();
   const playback = player.playback;
 
@@ -623,7 +671,7 @@ function FullPlayer({
           <button
             type="button"
             onClick={onOpenShow}
-            className="mx-auto block rounded-xl outline-none transition-transform active:scale-[0.98] focus:ring-4 focus:ring-white/25 motion-reduce:transition-none"
+            className="mx-auto block rounded-xl outline-none transition-transform focus:ring-4 focus:ring-white/25 active:scale-[0.98] motion-reduce:transition-none"
             aria-label={`Open episodes for ${playback.podcastTitle}`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -645,7 +693,9 @@ function FullPlayer({
       <p className="mt-8 text-sm text-[#f8f1b8]/80">{formatDateLabel(playback.updatedAt)}</p>
       <div className="mt-1 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="line-clamp-2 text-2xl font-bold leading-tight text-white">{playback.episodeTitle}</h2>
+          <h2 className="line-clamp-2 text-2xl font-bold leading-tight text-white">
+            {playback.episodeTitle}
+          </h2>
           {onOpenShow ? (
             <button
               type="button"
@@ -775,10 +825,7 @@ function EpisodeList({
       return true;
     }
 
-    return [episode.title, episode.description]
-      .join(" ")
-      .toLowerCase()
-      .includes(normalizedQuery);
+    return [episode.title, episode.description].join(" ").toLowerCase().includes(normalizedQuery);
   });
   const playableEpisodes = episodes.map((episode) => toPlayableEpisode(episode, podcast, feed));
   const progressByEpisode = loadEpisodePlaybackProgress();
@@ -812,9 +859,7 @@ function EpisodeList({
           episode.durationMs ??
           (isCurrentEpisode ? player.playback?.durationMs : undefined) ??
           savedProgress?.durationMs;
-        const progress = currentDurationMs
-          ? Math.min(1, currentPositionMs / currentDurationMs)
-          : 0;
+        const progress = currentDurationMs ? Math.min(1, currentPositionMs / currentDurationMs) : 0;
         const isListened = Boolean(savedProgress?.listenedAt) || progress >= 0.9;
         const episodeNumber = getEpisodeNumber(episode.title);
         const playableEpisode = playableEpisodes[episodeIndex];
@@ -827,16 +872,18 @@ function EpisodeList({
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h3 className="text-base font-semibold leading-6 text-[#f8f9fb]">{episode.title}</h3>
+                    <h3 className="text-base font-semibold leading-6 text-[#f8f9fb]">
+                      {episode.title}
+                    </h3>
                     {episode.description ? (
-                      <p className="mt-2 line-clamp-2 text-sm leading-5 text-[#bdc1c6]">{episode.description}</p>
+                      <p className="mt-2 line-clamp-2 text-sm leading-5 text-[#bdc1c6]">
+                        {episode.description}
+                      </p>
                     ) : null}
                   </div>
                   <button
                     type="button"
-                    onClick={() =>
-                      onPlay(playableEpisode, playableEpisodes)
-                    }
+                    onClick={() => onPlay(playableEpisode, playableEpisodes)}
                     className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#f8f9fb] text-[#101113] outline-none focus:ring-4 focus:ring-[#8ab4f8]/20"
                     aria-label={`Play ${episode.title}`}
                   >
@@ -844,8 +891,12 @@ function EpisodeList({
                   </button>
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#9aa0a6]">
-                  {episodeNumber ? <span className="font-semibold text-[#f8f9fb]">Ep{episodeNumber}</span> : null}
-                  {episode.publishedAt ? <span>{new Date(episode.publishedAt).toLocaleDateString()}</span> : null}
+                  {episodeNumber ? (
+                    <span className="font-semibold text-[#f8f9fb]">Ep{episodeNumber}</span>
+                  ) : null}
+                  {episode.publishedAt ? (
+                    <span>{new Date(episode.publishedAt).toLocaleDateString()}</span>
+                  ) : null}
                   {episode.durationMs ? <span>{formatTimestamp(episode.durationMs)}</span> : null}
                   {isListened ? (
                     <span className="inline-flex items-center gap-1 text-[#9be7a8]">
@@ -857,7 +908,10 @@ function EpisodeList({
                 {isCurrentEpisode || savedProgress ? (
                   <div className="mt-3">
                     <div className="h-1.5 overflow-hidden rounded-full bg-[#2b2f36]">
-                      <div className="h-full rounded-full bg-[#a8c7fa]" style={{ width: `${progress * 100}%` }} />
+                      <div
+                        className="h-full rounded-full bg-[#a8c7fa]"
+                        style={{ width: `${progress * 100}%` }}
+                      />
                     </div>
                     <p className="mt-1 text-xs text-[#a8c7fa]">
                       {isListened ? "Listened" : `${Math.round(progress * 100)}% listened`}
@@ -954,9 +1008,7 @@ function ListeningSummary({
               label="Weekly goal"
               valueMs={weekMs}
               goalMinutes={mediaSettings.goals.weeklyMinutes}
-              onChange={(weeklyMinutes) =>
-                onGoalsChange({ ...mediaSettings.goals, weeklyMinutes })
-              }
+              onChange={(weeklyMinutes) => onGoalsChange({ ...mediaSettings.goals, weeklyMinutes })}
             />
             <GoalProgress
               label="Monthly goal"
@@ -1102,7 +1154,9 @@ function PodcastArtwork({
   }
 
   return (
-    <div className={`${size} flex shrink-0 items-center justify-center rounded-lg bg-[#202329] text-xl font-bold text-[#a8c7fa]`}>
+    <div
+      className={`${size} flex shrink-0 items-center justify-center rounded-lg bg-[#202329] text-xl font-bold text-[#a8c7fa]`}
+    >
       {title.slice(0, 1)}
     </div>
   );
@@ -1165,10 +1219,9 @@ function getEpisodeNumber(title: string) {
   return match ? Number(match[1]) : null;
 }
 
-async function fetchPodcastFeed(feedUrl: string): Promise<
-  | { ok: true; feed: RssPodcastFeed }
-  | { ok: false; error: string }
-> {
+async function fetchPodcastFeed(
+  feedUrl: string,
+): Promise<{ ok: true; feed: RssPodcastFeed } | { ok: false; error: string }> {
   try {
     const response = await fetch(`/api/connectors/rss/feed?url=${encodeURIComponent(feedUrl)}`);
 

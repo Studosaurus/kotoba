@@ -5,6 +5,10 @@ export interface PodcastSource {
   imageUrl?: string;
   feedUrl: string;
   source: "curated" | "user";
+  difficulty?: 1 | 2 | 3 | 4 | 5;
+  learningFeatures?: string[];
+  availability?: "active" | "archive";
+  attribution?: string;
 }
 
 export interface PodcastEpisode {
