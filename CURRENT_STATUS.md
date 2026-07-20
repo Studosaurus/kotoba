@@ -166,6 +166,7 @@ Current behavior:
 - Playback speed options are `0.8x`, `0.85x`, `0.9x`, `0.95x`, and `1x`.
 - Finishing an episode advances to the next episode instead of looping.
 - Podcast playback is suspended before voice capture opens the microphone; after microphone teardown, the affected audio element is destroyed and remounted before restoring episode state so iOS does not reuse a silent audio-session route.
+- Recovery waits for both Speech Recognition and MediaRecorder teardown, restores from an immutable playback snapshot only after audio metadata loads, and clears failed seek locks after a timeout so scrub/skip controls remain usable.
 - Episode completion is guarded against duplicate and stale audio events before advancing through the saved queue.
 
 ### Source Context

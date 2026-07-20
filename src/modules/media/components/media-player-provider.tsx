@@ -39,6 +39,12 @@ interface MediaPlayerContextValue {
 
 const MediaPlayerContext = createContext<MediaPlayerContextValue | null>(null);
 
+interface MicrophoneRecoverySnapshot {
+  episodeId: string;
+  positionMs: number;
+  playbackRate: number;
+}
+
 export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode }>) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastTrackedPositionMsRef = useRef<number | null>(null);
@@ -50,6 +56,9 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
   const seekRetryCountRef = useRef(0);
   const completedEpisodeIdRef = useRef<string | null>(null);
   const microphoneRecoveryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const microphoneRecoverySnapshotRef = useRef<MicrophoneRecoverySnapshot | null>(null);
+  const pendingLoadPositionMsRef = useRef<number | null>(null);
+  const playAfterRecoveryRef = useRef(false);
   const [playback, setPlayback] = useState<CurrentEpisodePlayback | null>(() =>
     loadCurrentEpisodePlayback(),
   );
@@ -195,6 +204,26 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
       return;
     }
 
+    const recoverySnapshot = microphoneRecoverySnapshotRef.current;
+
+    if (recoverySnapshot?.episodeId === playback.episodeId) {
+      playAfterRecoveryRef.current = true;
+      isSeekingRef.current = true;
+      pendingSeekPositionMsRef.current = recoverySnapshot.positionMs;
+      seekRetryCountRef.current = 0;
+      requestNativeSeek(audio, recoverySnapshot.positionMs);
+      if (microphoneRecoveryTimeoutRef.current) {
+        clearTimeout(microphoneRecoveryTimeoutRef.current);
+      }
+      microphoneRecoveryTimeoutRef.current = setTimeout(() => {
+        microphoneRecoveryTimeoutRef.current = null;
+        isSeekingRef.current = false;
+        pendingSeekPositionMsRef.current = null;
+        playAfterRecoveryRef.current = false;
+      }, 3_000);
+      return;
+    }
+
     if (audio.paused) {
       void audio.play();
       updatePlayback((current) => ({ ...current, isPlaying: true }));
@@ -217,10 +246,21 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
     }
 
     audio.pause();
+    const positionMs = Math.floor(audio.currentTime * 1000);
+    const currentPlayback = playbackRef.current;
+
+    if (currentPlayback) {
+      microphoneRecoverySnapshotRef.current = {
+        episodeId: currentPlayback.episodeId,
+        positionMs,
+        playbackRate: currentPlayback.playbackRate,
+      };
+    }
+
     updatePlayback((current) => ({
       ...current,
       isPlaying: false,
-      positionMs: Math.floor(audio.currentTime * 1000),
+      positionMs,
       updatedAt: new Date().toISOString(),
     }));
   }, [updatePlayback]);
@@ -228,25 +268,28 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
   const recoverFromMicrophoneCapture = useCallback(() => {
     const audio = audioRef.current;
     const currentPlayback = playbackRef.current;
+    const recoverySnapshot = microphoneRecoverySnapshotRef.current;
 
-    if (!audio || !currentPlayback) {
+    if (!audio || !currentPlayback || !recoverySnapshot) {
       return;
     }
 
     audio.pause();
-    lastTrackedPositionMsRef.current = currentPlayback.positionMs;
+    lastTrackedPositionMsRef.current = recoverySnapshot.positionMs;
     lastTrackedAtMsRef.current = Date.now();
-    updatePlayback((current) => ({ ...current, isPlaying: false }));
+    updatePlayback((current) => ({
+      ...current,
+      isPlaying: false,
+      positionMs: recoverySnapshot.positionMs,
+      playbackRate: recoverySnapshot.playbackRate,
+    }));
 
     if (microphoneRecoveryTimeoutRef.current) {
       clearTimeout(microphoneRecoveryTimeoutRef.current);
     }
 
-    microphoneRecoveryTimeoutRef.current = setTimeout(() => {
-      microphoneRecoveryTimeoutRef.current = null;
-      audioRef.current = null;
-      setAudioElementGeneration((generation) => generation + 1);
-    }, 250);
+    audioRef.current = null;
+    setAudioElementGeneration((generation) => generation + 1);
   }, [updatePlayback]);
 
   const seek = useCallback(
@@ -299,9 +342,10 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
       return;
     }
 
-      if (audio.src !== audioUrl) {
+    if (audio.src !== audioUrl) {
+      pendingLoadPositionMsRef.current = playback?.positionMs ?? 0;
       audio.src = audioUrl;
-      audio.currentTime = (playback?.positionMs ?? 0) / 1000;
+      audio.load();
       lastTrackedPositionMsRef.current = playback?.positionMs ?? 0;
       lastTrackedAtMsRef.current = Date.now();
     }
@@ -364,6 +408,39 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
           if (Number.isFinite(durationMs)) {
             updatePlayback((current) => ({ ...current, durationMs }));
           }
+
+          const recoverySnapshot = microphoneRecoverySnapshotRef.current;
+          const requestedPositionMs =
+            recoverySnapshot &&
+            recoverySnapshot.episodeId === playbackRef.current?.episodeId
+              ? recoverySnapshot.positionMs
+              : pendingLoadPositionMsRef.current;
+
+          pendingLoadPositionMsRef.current = null;
+
+          if (requestedPositionMs && requestedPositionMs > 0) {
+            const targetPositionMs = Number.isFinite(durationMs)
+              ? Math.min(requestedPositionMs, durationMs)
+              : requestedPositionMs;
+
+            isSeekingRef.current = true;
+            pendingSeekPositionMsRef.current = targetPositionMs;
+            seekRetryCountRef.current = 0;
+            requestNativeSeek(event.currentTarget, targetPositionMs);
+
+            if (microphoneRecoveryTimeoutRef.current) {
+              clearTimeout(microphoneRecoveryTimeoutRef.current);
+            }
+            microphoneRecoveryTimeoutRef.current = setTimeout(() => {
+              microphoneRecoveryTimeoutRef.current = null;
+              isSeekingRef.current = false;
+              pendingSeekPositionMsRef.current = null;
+            }, 3_000);
+          } else if (
+            recoverySnapshot?.episodeId === playbackRef.current?.episodeId
+          ) {
+            microphoneRecoverySnapshotRef.current = null;
+          }
         }}
         onPause={() => {
           if (!isChangingEpisodeRef.current) {
@@ -400,6 +477,17 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
           isSeekingRef.current = false;
           pendingSeekPositionMsRef.current = null;
           seekRetryCountRef.current = 0;
+          if (microphoneRecoveryTimeoutRef.current) {
+            clearTimeout(microphoneRecoveryTimeoutRef.current);
+            microphoneRecoveryTimeoutRef.current = null;
+          }
+
+          const didRestoreMicrophoneSnapshot =
+            microphoneRecoverySnapshotRef.current?.episodeId === currentPlayback?.episodeId;
+
+          if (didRestoreMicrophoneSnapshot) {
+            microphoneRecoverySnapshotRef.current = null;
+          }
           lastTrackedPositionMsRef.current = confirmedPositionMs;
           lastTrackedAtMsRef.current = Date.now();
           updatePlayback((current) => ({
@@ -415,6 +503,11 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
               durationMs: currentPlayback.durationMs,
               updatedAt: new Date().toISOString(),
             });
+          }
+
+          if (didRestoreMicrophoneSnapshot && playAfterRecoveryRef.current) {
+            playAfterRecoveryRef.current = false;
+            void event.currentTarget.play();
           }
         }}
         onTimeUpdate={(event) => {

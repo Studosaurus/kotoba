@@ -80,6 +80,8 @@ export function VocabularyCaptureExperience() {
   const [pendingAudioClip, setPendingAudioClip] = useState<LocalAudioClip | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionEndedPromiseRef = useRef<Promise<void> | null>(null);
+  const resolveRecognitionEndedRef = useRef<(() => void) | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -343,15 +345,29 @@ export function VocabularyCaptureExperience() {
     return reviewedCard;
   };
 
+  const recoverAfterCaptureTeardown = async (
+    stopRecorderPromise: Promise<LocalAudioClip | null>,
+  ) => {
+    const [audioClip] = await Promise.all([
+      stopRecorderPromise,
+      waitForTeardown(recognitionEndedPromiseRef.current, 1_500),
+    ]);
+
+    recoverFromMicrophoneCapture();
+    return audioClip;
+  };
+
   const resetCapture = () => {
     activeAnalysisIdRef.current = null;
     clearSilenceTimer(silenceTimerRef);
     recognitionRef.current?.abort();
-    void stopAudioClipCapture({
-      mediaRecorderRef,
-      mediaStreamRef,
-      audioClipPromiseRef,
-    }).finally(recoverFromMicrophoneCapture);
+    void recoverAfterCaptureTeardown(
+      stopAudioClipCapture({
+        mediaRecorderRef,
+        mediaStreamRef,
+        audioClipPromiseRef,
+      }),
+    );
     recognitionRef.current = null;
     shouldAnalyzeOnSpeechEndRef.current = false;
     hasFinalizedSpeechRef.current = false;
@@ -387,6 +403,9 @@ export function VocabularyCaptureExperience() {
 
     const recognition = new SpeechRecognitionConstructor();
     recognitionRef.current = recognition;
+    recognitionEndedPromiseRef.current = new Promise((resolve) => {
+      resolveRecognitionEndedRef.current = resolve;
+    });
     transcriptRef.current = "";
     shouldAnalyzeOnSpeechEndRef.current = false;
     hasFinalizedSpeechRef.current = false;
@@ -415,11 +434,13 @@ export function VocabularyCaptureExperience() {
       shouldAnalyzeOnSpeechEndRef.current = false;
       hasFinalizedSpeechRef.current = true;
       clearSilenceTimer(silenceTimerRef);
-      void stopAudioClipCapture({
-        mediaRecorderRef,
-        mediaStreamRef,
-        audioClipPromiseRef,
-      }).finally(recoverFromMicrophoneCapture);
+      void recoverAfterCaptureTeardown(
+        stopAudioClipCapture({
+          mediaRecorderRef,
+          mediaStreamRef,
+          audioClipPromiseRef,
+        }),
+      );
       setIsRecording(false);
       recognitionRef.current = null;
       saveMicrophonePermissionState(event.error === "not-allowed" ? "denied" : "unknown");
@@ -427,6 +448,8 @@ export function VocabularyCaptureExperience() {
     };
 
     recognition.onend = () => {
+      resolveRecognitionEndedRef.current?.();
+      resolveRecognitionEndedRef.current = null;
       finalizeSpeechCapture();
     };
 
@@ -452,11 +475,15 @@ export function VocabularyCaptureExperience() {
       saveMicrophonePermissionState("granted");
       scheduleSilenceStop(4000);
     } catch {
-      void stopAudioClipCapture({
-        mediaRecorderRef,
-        mediaStreamRef,
-        audioClipPromiseRef,
-      }).finally(recoverFromMicrophoneCapture);
+      resolveRecognitionEndedRef.current?.();
+      resolveRecognitionEndedRef.current = null;
+      void recoverAfterCaptureTeardown(
+        stopAudioClipCapture({
+          mediaRecorderRef,
+          mediaStreamRef,
+          audioClipPromiseRef,
+        }),
+      );
       recognitionRef.current = null;
       setIsRecording(false);
       saveMicrophonePermissionState("denied");
@@ -502,12 +529,13 @@ export function VocabularyCaptureExperience() {
     }
 
     const transcript = transcriptRef.current.trim();
-    const audioClip = await stopAudioClipCapture({
-      mediaRecorderRef,
-      mediaStreamRef,
-      audioClipPromiseRef,
-    });
-    recoverFromMicrophoneCapture();
+    const audioClip = await recoverAfterCaptureTeardown(
+      stopAudioClipCapture({
+        mediaRecorderRef,
+        mediaStreamRef,
+        audioClipPromiseRef,
+      }),
+    );
     shouldAnalyzeOnSpeechEndRef.current = false;
 
     if (!transcript) {
@@ -776,6 +804,19 @@ function clearSilenceTimer(timerRef: MutableRefObject<ReturnType<typeof setTimeo
     clearTimeout(timerRef.current);
     timerRef.current = null;
   }
+}
+
+async function waitForTeardown(promise: Promise<void> | null, timeoutMs: number) {
+  if (!promise) {
+    return;
+  }
+
+  await Promise.race([
+    promise,
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, timeoutMs);
+    }),
+  ]);
 }
 
 function collectTranscript(results: SpeechRecognitionResultList) {
