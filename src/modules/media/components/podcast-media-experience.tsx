@@ -19,7 +19,7 @@ import {
   Library,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { RssPodcastFeed } from "@/connectors/rss/types";
 import {
   getDailyAchievementRating,
@@ -81,6 +81,7 @@ export function PodcastMediaExperience({
   const [isOldestFirst, setIsOldestFirst] = useState(() => loadMediaUserSettings().isOldestFirst);
   const [mediaSettings, setMediaSettings] = useState(() => loadMediaUserSettings());
   const [statsVersion, setStatsVersion] = useState(0);
+  const hasConsumedInitialPodcastRef = useRef(false);
   const playerHasPreviousView = view.name === "player" && Boolean(view.previous);
   const filteredPodcasts = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -262,13 +263,18 @@ export function PodcastMediaExperience({
   }, [initialView, player.playback, podcasts, view.name, playerHasPreviousView]);
 
   useEffect(() => {
-    if (!initialPodcastId || view.name !== "library") {
+    if (
+      !initialPodcastId ||
+      hasConsumedInitialPodcastRef.current ||
+      view.name !== "library"
+    ) {
       return;
     }
 
     const podcast = podcasts.find((item) => item.id === initialPodcastId);
 
     if (podcast) {
+      hasConsumedInitialPodcastRef.current = true;
       void Promise.resolve().then(() => openPodcast(podcast));
     }
   }, [initialPodcastId, podcasts, view.name]);

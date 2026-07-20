@@ -157,6 +157,7 @@ Current behavior:
 - Expanded playback is player-only; browsing Shows exits the overlay to the normal podcast page so the mini player remains available.
 - The full player has a Shows control, and its podcast title opens that show's episode list.
 - The full player's podcast artwork also opens that show's episode list.
+- Current-show deep links are consumed once so Back from an episode list returns to show selection instead of reopening the same show.
 - Podcast library, episode-list, and player screens share a short reduced-motion-aware entrance transition to soften navigation changes.
 - Selecting an episode from a show starts it in the single shared player and expands the mini player; podcast pages no longer render a second standalone full player.
 - Collapsing the shared full player returns to Vocabulary Capture.
