@@ -156,6 +156,8 @@ Current behavior:
 - Expanding the mini player opens the player page.
 - Expanded playback is player-only; browsing Shows exits the overlay to the normal podcast page so the mini player remains available.
 - The full player has a Shows control, and its podcast title opens that show's episode list.
+- Selecting an episode from a show starts it in the single shared player and expands the mini player; podcast pages no longer render a second standalone full player.
+- Collapsing the shared full player returns to Vocabulary Capture.
 - Player supports play/pause, scrub, previous/next episode, skip back/forward, playback speed, and capture.
 - Timeline scrubbing uses Safari's continuous input event, guards against stale playback events, retries native no-op seeks, and persists the browser-confirmed position.
 - Playback speed options are `0.8x`, `0.85x`, `0.9x`, `0.95x`, and `1x`.

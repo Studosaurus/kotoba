@@ -19,7 +19,10 @@ export function GlobalMiniPlayer() {
           <PodcastMediaExperience
             isEmbedded
             initialView="player"
-            onCollapse={() => setExpanded(false)}
+            onCollapse={() => {
+              setExpanded(false);
+              router.push("/modules/vocabulary-capture");
+            }}
             onBrowseShows={() => {
               setExpanded(false);
               router.push("/modules/media");

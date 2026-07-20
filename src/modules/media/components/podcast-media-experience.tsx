@@ -314,13 +314,12 @@ export function PodcastMediaExperience({
 
   const playEpisode = (episode: PodcastEpisode, queue?: PodcastEpisode[]) => {
     player.playEpisode(episode, queue);
-    if (view.name === "podcast") {
-      setView({ name: "player", previous: view });
-    }
+    player.setExpanded(true);
   };
 
   const captureCurrentPlayback = () => {
     player.pause();
+    onCollapse?.();
     router.push("/modules/vocabulary-capture");
   };
 
