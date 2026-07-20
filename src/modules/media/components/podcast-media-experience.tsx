@@ -650,7 +650,7 @@ function FullPlayer({
         min={0}
         max={Math.max(durationMs, playback.positionMs, 1)}
         value={playback.positionMs}
-        onChange={(event) => player.seek(Number(event.target.value))}
+        onInput={(event) => player.seek(Number(event.currentTarget.value))}
         className="mt-5 w-full accent-[#f8f1b8]"
         aria-label="Episode progress"
       />

@@ -46,6 +46,8 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
   const playbackRef = useRef<CurrentEpisodePlayback | null>(null);
   const isChangingEpisodeRef = useRef(false);
   const isSeekingRef = useRef(false);
+  const pendingSeekPositionMsRef = useRef<number | null>(null);
+  const seekRetryCountRef = useRef(0);
   const completedEpisodeIdRef = useRef<string | null>(null);
   const microphoneRecoveryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [playback, setPlayback] = useState<CurrentEpisodePlayback | null>(() =>
@@ -259,7 +261,9 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
 
       if (audio) {
         isSeekingRef.current = true;
-        audio.currentTime = targetPositionMs / 1000;
+        pendingSeekPositionMsRef.current = targetPositionMs;
+        seekRetryCountRef.current = 0;
+        requestNativeSeek(audio, targetPositionMs);
       }
 
       lastTrackedPositionMsRef.current = targetPositionMs;
@@ -380,8 +384,22 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
         onSeeked={(event) => {
           const confirmedPositionMs = Math.floor(event.currentTarget.currentTime * 1000);
           const currentPlayback = playbackRef.current;
+          const requestedPositionMs = pendingSeekPositionMsRef.current;
+
+          if (
+            requestedPositionMs !== null &&
+            Math.abs(confirmedPositionMs - requestedPositionMs) > 1_500 &&
+            seekRetryCountRef.current < 2
+          ) {
+            seekRetryCountRef.current += 1;
+            isSeekingRef.current = true;
+            requestNativeSeek(event.currentTarget, requestedPositionMs);
+            return;
+          }
 
           isSeekingRef.current = false;
+          pendingSeekPositionMsRef.current = null;
+          seekRetryCountRef.current = 0;
           lastTrackedPositionMsRef.current = confirmedPositionMs;
           lastTrackedAtMsRef.current = Date.now();
           updatePlayback((current) => ({
@@ -482,6 +500,18 @@ function loadEpisodeAudio(
   audio.load();
   audio.currentTime = playback.positionMs / 1000;
   audio.playbackRate = playback.playbackRate;
+}
+
+function requestNativeSeek(audio: HTMLAudioElement, positionMs: number) {
+  const positionSeconds = positionMs / 1000;
+  const seekableAudio = audio as HTMLAudioElement & { fastSeek?: (time: number) => void };
+
+  if (typeof seekableAudio.fastSeek === "function") {
+    seekableAudio.fastSeek(positionSeconds);
+    return;
+  }
+
+  audio.currentTime = positionSeconds;
 }
 
 export function useMediaPlayer() {

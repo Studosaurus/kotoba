@@ -40,7 +40,7 @@ export function GlobalMiniPlayer() {
                 min={0}
                 max={Math.max(durationMs, 1)}
                 value={Math.min(playback.positionMs, Math.max(durationMs, playback.positionMs))}
-                onChange={(event) => seek(Number(event.target.value))}
+                onInput={(event) => seek(Number(event.currentTarget.value))}
                 className="h-5 w-full accent-[#a8c7fa]"
                 aria-label="Episode progress"
               />
