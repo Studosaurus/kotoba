@@ -33,6 +33,8 @@ export interface LocalReviewCard {
   createdAt: string;
   updatedAt: string;
   lastReviewedAt?: string;
+  successfulReviewDays?: string[];
+  lastLapseAt?: string;
   nextDueAt: string;
 }
 

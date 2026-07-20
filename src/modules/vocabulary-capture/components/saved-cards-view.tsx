@@ -130,34 +130,26 @@ export function SavedCardsView({
       ) : (
         <div className="space-y-3">
           {filteredCards.map((card) => {
-            const relatedReviewCards = reviewCards.filter(
-              (reviewCard) => reviewCard.vocabularyCardId === card.id,
-            );
-            const dueCount = getDueCountForVocabulary(card, reviewCards);
             const mastery = getVocabularyMastery(card, reviewCards);
-            const nextDueCard = getNextDueCardForVocabulary(card, reviewCards);
-            const reviewCount = relatedReviewCards.reduce(
-              (total, reviewCard) => total + reviewCard.reviewCount,
-              0,
-            );
-            const sourceContext = card.analysis.sourceContext;
 
             return (
-              <article key={card.id} className="rounded-[1.5rem] bg-[#17191d] p-4">
+              <article key={card.id} className="rounded-[1.25rem] bg-[#17191d] p-3">
                 <div className="flex items-start justify-between gap-3">
                   <button
                     type="button"
                     onClick={() => setSelectedCardId(card.id)}
                     className="min-w-0 flex-1 text-left outline-none focus:ring-4 focus:ring-[#8ab4f8]/20"
                   >
-                    <KanjiReadingText
-                      phrase={card.analysis.originalPhrase}
-                      reading={card.analysis.readingKana}
-                      className="text-2xl leading-snug text-[#f8f9fb]"
-                    />
-                    <p className="mt-3 text-base font-medium text-[#a8c7fa]">
-                      {card.analysis.naturalTranslation}
+                    <p lang="ja" className="text-xl font-medium leading-snug text-[#f8f9fb]">
+                      {card.analysis.originalPhrase}
                     </p>
+                    <p className="mt-1 line-clamp-2 text-sm font-medium text-[#a8c7fa]">
+                      {card.analysis.conciseMeaning || card.analysis.naturalTranslation}
+                    </p>
+                    <p lang="ja" className="mt-2 line-clamp-2 text-sm leading-5 text-[#bdc1c6]">
+                      {card.analysis.exampleSentence}
+                    </p>
+                    <MasteryProgressBar mastery={mastery} compact />
                   </button>
                   <button
                     type="button"
@@ -168,30 +160,6 @@ export function SavedCardsView({
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
                   </button>
                 </div>
-                <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
-                  <Pill>{formatMastery(mastery)}</Pill>
-                  <Pill>{dueCount} due</Pill>
-                  {nextDueCard ? <Pill>next {formatDueLabel(nextDueCard)}</Pill> : null}
-                  <Pill>{relatedReviewCards.length} cards</Pill>
-                  <Pill>{reviewCount} reviews</Pill>
-                  {relatedReviewCards.map((reviewCard) => (
-                    <Pill key={reviewCard.id}>{formatReviewCardType(reviewCard.type)}</Pill>
-                  ))}
-                  {card.analysis.suggestedTags.slice(0, 3).map((tag) => (
-                    <Pill key={tag}>{tag}</Pill>
-                  ))}
-                </div>
-                <MasteryProgressBar mastery={mastery} />
-                {hasSourceContext(sourceContext) ? (
-                  <p className="mt-3 truncate text-xs text-[#9aa0a6]">
-                    {formatSourceSummary(sourceContext)}
-                    {sourceContext?.timestampLabel ? ` at ${sourceContext.timestampLabel}` : ""}
-                  </p>
-                ) : null}
-                <SavedAudioClip
-                  card={card}
-                  onUpdateAudioClip={(audioClip) => onUpdateAudioClip(card.id, audioClip)}
-                />
               </article>
             );
           })}
@@ -400,18 +368,6 @@ function SavedCardDetail({
         </div>
       </section>
 
-      <DetailSection title="Source">
-        <SourceEditor
-          key={`${card.id}:${sourceEditorKey(card.analysis.sourceContext)}`}
-          sourceContext={card.analysis.sourceContext}
-          onSave={onUpdateSourceContext}
-        />
-      </DetailSection>
-
-      <DetailSection title="Grammar">
-        <p className="text-sm leading-6 text-[#bdc1c6]">{card.analysis.grammarExplanation}</p>
-      </DetailSection>
-
       <DetailSection title="Example">
         <KanjiReadingText
           phrase={card.analysis.exampleSentence}
@@ -422,6 +378,12 @@ function SavedCardDetail({
           {card.analysis.exampleSentenceTranslation}
         </p>
       </DetailSection>
+
+      <DetailSection title="Grammar">
+        <p className="text-sm leading-6 text-[#bdc1c6]">{card.analysis.grammarExplanation}</p>
+      </DetailSection>
+
+      <SavedAudioClip card={card} onUpdateAudioClip={onUpdateAudioClip} />
 
       <DetailSection title="Metadata">
         <div className="flex flex-wrap gap-2 text-xs font-semibold">
@@ -434,7 +396,13 @@ function SavedCardDetail({
         </div>
       </DetailSection>
 
-      <SavedAudioClip card={card} onUpdateAudioClip={onUpdateAudioClip} />
+      <DetailSection title="Source">
+        <SourceEditor
+          key={`${card.id}:${sourceEditorKey(card.analysis.sourceContext)}`}
+          sourceContext={card.analysis.sourceContext}
+          onSave={onUpdateSourceContext}
+        />
+      </DetailSection>
     </section>
   );
 }
@@ -587,18 +555,24 @@ function KanjiReadingText({
   );
 }
 
-function MasteryProgressBar({ mastery }: { mastery: LocalReviewCard["masteryLevel"] }) {
+function MasteryProgressBar({
+  mastery,
+  compact = false,
+}: {
+  mastery: LocalReviewCard["masteryLevel"];
+  compact?: boolean;
+}) {
   const progress = getMasteryProgress(mastery);
 
   return (
-    <div className="mt-4">
+    <div className={compact ? "mt-3" : "mt-4"}>
       <div className="flex items-center justify-between gap-3 text-xs font-semibold text-[#bdc1c6]">
         <span>{formatMastery(progress.level)}</span>
         <span>
           {progress.isComplete ? "Mastered" : `Next: ${formatMastery(progress.nextLevel)}`}
         </span>
       </div>
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#2b2f36]">
+      <div className={`${compact ? "mt-1.5 h-1.5" : "mt-2 h-2"} overflow-hidden rounded-full bg-[#2b2f36]`}>
         <div className="h-full rounded-full bg-[#a8c7fa]" style={{ width: `${progress.percent}%` }} />
       </div>
     </div>

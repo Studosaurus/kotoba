@@ -6,6 +6,7 @@ import type {
   LocalVocabularyDeck,
   ReviewCardType,
 } from "./local-vocabulary-types";
+import { recalculateReviewCardMastery } from "./local-study-scheduler";
 
 const LEGACY_CAPTURE_KEY = "kotoba:vocabulary-captures";
 const LEGACY_CARD_KEY = "kotoba:vocabulary-cards";
@@ -85,12 +86,13 @@ function createReviewCard(
     lapseCount: 0,
     createdAt,
     updatedAt: createdAt,
+    successfulReviewDays: [],
     nextDueAt: createdAt,
   };
 }
 
 function ensureReviewCards(deck: LocalVocabularyDeck): LocalVocabularyDeck {
-  const reviewCards = [...(deck.reviewCards ?? [])];
+  const reviewCards = (deck.reviewCards ?? []).map(recalculateReviewCardMastery);
 
   deck.vocabularyCards.forEach((vocabularyCard) => {
     const existingTypes = new Set(

@@ -166,12 +166,28 @@ export function addListeningTime({
 
   const stats = loadListeningStats();
   const updatedAt = listenedAt.toISOString();
+  const daySegments = splitListeningIntervalByLocalDay(listenedAt, listenedMs);
+  const nextByDay = daySegments.reduce(
+    (bucket, segment) =>
+      addToStatsBucket(bucket, getDayKey(segment.date), segment.listenedMs, updatedAt),
+    stats.byDay,
+  );
+  const nextByWeek = daySegments.reduce(
+    (bucket, segment) =>
+      addToStatsBucket(bucket, getWeekKey(segment.date), segment.listenedMs, updatedAt),
+    stats.byWeek,
+  );
+  const nextByMonth = daySegments.reduce(
+    (bucket, segment) =>
+      addToStatsBucket(bucket, getMonthKey(segment.date), segment.listenedMs, updatedAt),
+    stats.byMonth,
+  );
   const nextStats: ListeningStats = {
     ...stats,
     totalMs: stats.totalMs + listenedMs,
-    byDay: addToStatsBucket(stats.byDay, getDayKey(listenedAt), listenedMs, updatedAt),
-    byWeek: addToStatsBucket(stats.byWeek, getWeekKey(listenedAt), listenedMs, updatedAt),
-    byMonth: addToStatsBucket(stats.byMonth, getMonthKey(listenedAt), listenedMs, updatedAt),
+    byDay: nextByDay,
+    byWeek: nextByWeek,
+    byMonth: nextByMonth,
     byPodcast: addToStatsBucket(stats.byPodcast, playback.podcastId, listenedMs, updatedAt),
     byEpisode: addToStatsBucket(stats.byEpisode, playback.episodeId, listenedMs, updatedAt),
   };
@@ -202,20 +218,90 @@ export function getCurrentListeningPeriodKeys(now = new Date()) {
   };
 }
 
+export function getCurrentListeningPeriodTotals(stats: ListeningStats, now = new Date()) {
+  const todayKey = getDayKey(now);
+  const weekStart = startOfLocalWeek(now);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  return Object.entries(stats.byDay).reduce(
+    (totals, [dayKey, entry]) => {
+      if (dayKey === todayKey) {
+        totals.todayMs += entry.listenedMs;
+      }
+
+      if (dayKey >= getDayKey(weekStart) && dayKey <= todayKey) {
+        totals.weekMs += entry.listenedMs;
+      }
+
+      if (dayKey >= getDayKey(monthStart) && dayKey <= todayKey) {
+        totals.monthMs += entry.listenedMs;
+      }
+
+      return totals;
+    },
+    { todayMs: 0, weekMs: 0, monthMs: 0 },
+  );
+}
+
 function getDayKey(value: Date) {
-  return value.toISOString().slice(0, 10);
+  return [
+    value.getFullYear(),
+    (value.getMonth() + 1).toString().padStart(2, "0"),
+    value.getDate().toString().padStart(2, "0"),
+  ].join("-");
 }
 
 function getMonthKey(value: Date) {
-  return value.toISOString().slice(0, 7);
+  return `${value.getFullYear()}-${(value.getMonth() + 1).toString().padStart(2, "0")}`;
 }
 
 function getWeekKey(value: Date) {
-  const date = new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
-  const day = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  const week = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  const date = new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  const day = date.getDay() || 7;
+  date.setDate(date.getDate() + 4 - day);
+  const yearStart = new Date(date.getFullYear(), 0, 1);
+  const week = Math.ceil((differenceInLocalCalendarDays(date, yearStart) + 1) / 7);
 
-  return `${date.getUTCFullYear()}-W${week.toString().padStart(2, "0")}`;
+  return `${date.getFullYear()}-W${week.toString().padStart(2, "0")}`;
+}
+
+function startOfLocalWeek(value: Date) {
+  const start = new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  const day = start.getDay() || 7;
+  start.setDate(start.getDate() - day + 1);
+  return start;
+}
+
+function differenceInLocalCalendarDays(later: Date, earlier: Date) {
+  const laterUtc = Date.UTC(later.getFullYear(), later.getMonth(), later.getDate());
+  const earlierUtc = Date.UTC(earlier.getFullYear(), earlier.getMonth(), earlier.getDate());
+  return Math.round((laterUtc - earlierUtc) / 86_400_000);
+}
+
+function splitListeningIntervalByLocalDay(endedAt: Date, listenedMs: number) {
+  const segments: Array<{ date: Date; listenedMs: number }> = [];
+  let segmentEnd = new Date(endedAt);
+  let remainingMs = listenedMs;
+
+  while (remainingMs > 0) {
+    const dayStart = new Date(
+      segmentEnd.getFullYear(),
+      segmentEnd.getMonth(),
+      segmentEnd.getDate(),
+    );
+    const elapsedTodayMs = Math.max(0, segmentEnd.getTime() - dayStart.getTime());
+
+    if (elapsedTodayMs === 0) {
+      segmentEnd = new Date(dayStart.getTime() - 1);
+      continue;
+    }
+
+    const segmentMs = Math.min(remainingMs, elapsedTodayMs);
+
+    segments.push({ date: segmentEnd, listenedMs: segmentMs });
+    remainingMs -= segmentMs;
+    segmentEnd = new Date(dayStart.getTime() - 1);
+  }
+
+  return segments;
 }

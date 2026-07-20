@@ -31,6 +31,8 @@ interface MediaPlayerContextValue {
   playPreviousEpisode(): void;
   togglePlay(): void;
   pause(): void;
+  prepareForMicrophoneCapture(): void;
+  recoverFromMicrophoneCapture(): void;
   seek(positionMs: number): void;
   setPlaybackRate(rate: number): void;
 }
@@ -40,6 +42,10 @@ const MediaPlayerContext = createContext<MediaPlayerContextValue | null>(null);
 export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode }>) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastTrackedPositionMsRef = useRef<number | null>(null);
+  const lastTrackedAtMsRef = useRef<number | null>(null);
+  const playbackRef = useRef<CurrentEpisodePlayback | null>(null);
+  const isChangingEpisodeRef = useRef(false);
+  const completedEpisodeIdRef = useRef<string | null>(null);
   const [playback, setPlayback] = useState<CurrentEpisodePlayback | null>(() =>
     loadCurrentEpisodePlayback(),
   );
@@ -48,6 +54,10 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
   const isPlaying = playback?.isPlaying;
   const playbackRate = playback?.playbackRate;
 
+  useEffect(() => {
+    playbackRef.current = playback;
+  }, [playback]);
+
   const updatePlayback = useCallback((updater: (playback: CurrentEpisodePlayback) => CurrentEpisodePlayback) => {
     setPlayback((current) => {
       if (!current) {
@@ -55,6 +65,7 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
       }
 
       const next = updater(current);
+      playbackRef.current = next;
       saveCurrentEpisodePlayback(next);
       return next;
     });
@@ -80,6 +91,12 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
       updatedAt: new Date().toISOString(),
     };
 
+    completedEpisodeIdRef.current = null;
+    isChangingEpisodeRef.current = true;
+    loadEpisodeAudio(audioRef.current, nextPlayback);
+    lastTrackedPositionMsRef.current = 0;
+    lastTrackedAtMsRef.current = Date.now();
+    playbackRef.current = nextPlayback;
     setPlayback(nextPlayback);
     saveCurrentEpisodePlayback(nextPlayback);
   }, []);
@@ -96,32 +113,46 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
       durationMs: episode.durationMs,
       positionMs: 0,
       isPlaying: true,
-      playbackRate: playback?.playbackRate ?? 1,
+      playbackRate: playbackRef.current?.playbackRate ?? 1,
       queue,
       queueIndex,
       updatedAt: new Date().toISOString(),
     };
 
+    isChangingEpisodeRef.current = true;
+    loadEpisodeAudio(audioRef.current, nextPlayback);
+    lastTrackedPositionMsRef.current = 0;
+    lastTrackedAtMsRef.current = Date.now();
+    playbackRef.current = nextPlayback;
     setPlayback(nextPlayback);
     saveCurrentEpisodePlayback(nextPlayback);
-  }, [playback?.playbackRate]);
+  }, []);
 
   const playNextEpisode = useCallback(() => {
-    if (!playback) {
+    const currentPlayback = playbackRef.current;
+
+    if (!currentPlayback) {
       return;
     }
 
-    const queue = playback.queue ?? [];
-    const currentIndex = playback.queueIndex ?? queue.findIndex((episode) => episode.id === playback.episodeId);
+    const queue = currentPlayback.queue ?? [];
+    const currentIndex =
+      currentPlayback.queueIndex ??
+      queue.findIndex((episode) => episode.id === currentPlayback.episodeId);
     const nextEpisode = queue[currentIndex + 1];
 
     if (!nextEpisode) {
-      updatePlayback((current) => ({ ...current, isPlaying: false, positionMs: current.durationMs ?? current.positionMs }));
+      isChangingEpisodeRef.current = false;
+      updatePlayback((current) => ({
+        ...current,
+        isPlaying: false,
+        positionMs: current.durationMs ?? current.positionMs,
+      }));
       return;
     }
 
     playQueuedEpisode(nextEpisode, queue, currentIndex + 1);
-  }, [playQueuedEpisode, playback, updatePlayback]);
+  }, [playQueuedEpisode, updatePlayback]);
 
   const playPreviousEpisode = useCallback(() => {
     if (!playback?.queue?.length) {
@@ -164,6 +195,41 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
     updatePlayback((current) => ({ ...current, isPlaying: false }));
   }, [updatePlayback]);
 
+  const prepareForMicrophoneCapture = useCallback(() => {
+    const audio = audioRef.current;
+
+    if (!audio) {
+      return;
+    }
+
+    audio.pause();
+    updatePlayback((current) => ({
+      ...current,
+      isPlaying: false,
+      positionMs: Math.floor(audio.currentTime * 1000),
+      updatedAt: new Date().toISOString(),
+    }));
+  }, [updatePlayback]);
+
+  const recoverFromMicrophoneCapture = useCallback(() => {
+    const audio = audioRef.current;
+    const currentPlayback = playbackRef.current;
+
+    if (!audio || !currentPlayback) {
+      return;
+    }
+
+    const positionSeconds = currentPlayback.positionMs / 1000;
+    audio.pause();
+    audio.src = currentPlayback.audioUrl;
+    audio.load();
+    audio.currentTime = positionSeconds;
+    audio.playbackRate = currentPlayback.playbackRate;
+    lastTrackedPositionMsRef.current = currentPlayback.positionMs;
+    lastTrackedAtMsRef.current = Date.now();
+    updatePlayback((current) => ({ ...current, isPlaying: false }));
+  }, [updatePlayback]);
+
   const seek = useCallback(
     (positionMs: number) => {
       const audio = audioRef.current;
@@ -172,6 +238,8 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
         audio.currentTime = positionMs / 1000;
       }
 
+      lastTrackedPositionMsRef.current = positionMs;
+      lastTrackedAtMsRef.current = Date.now();
       updatePlayback((current) => ({ ...current, positionMs }));
     },
     [updatePlayback],
@@ -199,10 +267,11 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
       return;
     }
 
-    if (audio.src !== audioUrl) {
+      if (audio.src !== audioUrl) {
       audio.src = audioUrl;
       audio.currentTime = (playback?.positionMs ?? 0) / 1000;
       lastTrackedPositionMsRef.current = playback?.positionMs ?? 0;
+      lastTrackedAtMsRef.current = Date.now();
     }
 
     audio.playbackRate = playbackRate ?? 1;
@@ -224,10 +293,24 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
       playPreviousEpisode,
       togglePlay,
       pause,
+      prepareForMicrophoneCapture,
+      recoverFromMicrophoneCapture,
       seek,
       setPlaybackRate,
     }),
-    [isExpanded, playEpisode, playNextEpisode, playPreviousEpisode, playback, pause, seek, setPlaybackRate, togglePlay],
+    [
+      isExpanded,
+      pause,
+      playback,
+      playEpisode,
+      playNextEpisode,
+      playPreviousEpisode,
+      prepareForMicrophoneCapture,
+      recoverFromMicrophoneCapture,
+      seek,
+      setPlaybackRate,
+      togglePlay,
+    ],
   );
 
   return (
@@ -242,9 +325,24 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
             updatePlayback((current) => ({ ...current, durationMs }));
           }
         }}
-        onPause={() => updatePlayback((current) => ({ ...current, isPlaying: false }))}
-        onPlay={() => updatePlayback((current) => ({ ...current, isPlaying: true }))}
+        onPause={() => {
+          if (!isChangingEpisodeRef.current) {
+            updatePlayback((current) => ({ ...current, isPlaying: false }));
+          }
+        }}
+        onPlay={() => {
+          isChangingEpisodeRef.current = false;
+          lastTrackedPositionMsRef.current = Math.floor(
+            (audioRef.current?.currentTime ?? 0) * 1000,
+          );
+          lastTrackedAtMsRef.current = Date.now();
+          updatePlayback((current) => ({ ...current, isPlaying: true }));
+        }}
         onTimeUpdate={(event) => {
+          if (isChangingEpisodeRef.current) {
+            return;
+          }
+
           const positionMs = Math.floor(event.currentTarget.currentTime * 1000);
           updatePlayback((current) => ({
             ...current,
@@ -253,17 +351,28 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
           }));
           if (playback) {
             const previousPositionMs = lastTrackedPositionMsRef.current;
-            const listenedDeltaMs =
+            const previousTrackedAtMs = lastTrackedAtMsRef.current;
+            const trackedAtMs = Date.now();
+            const mediaDeltaMs =
               previousPositionMs !== null ? positionMs - previousPositionMs : 0;
+            const wallClockDeltaMs =
+              previousTrackedAtMs !== null ? trackedAtMs - previousTrackedAtMs : 0;
+            const adjustedListeningMs = mediaDeltaMs / Math.max(playback.playbackRate, 0.1);
+            const isPlausiblePlaybackInterval =
+              playback.isPlaying &&
+              mediaDeltaMs > 0 &&
+              wallClockDeltaMs > 0 &&
+              adjustedListeningMs <= wallClockDeltaMs * 1.5 + 2_000;
 
-            if (playback.isPlaying && listenedDeltaMs > 0 && listenedDeltaMs <= 5_000) {
+            if (isPlausiblePlaybackInterval) {
               addListeningTime({
                 playback,
-                listenedMs: listenedDeltaMs,
+                listenedMs: Math.min(adjustedListeningMs, wallClockDeltaMs + 2_000),
               });
             }
 
             lastTrackedPositionMsRef.current = positionMs;
+            lastTrackedAtMsRef.current = trackedAtMs;
             saveEpisodePlaybackProgress({
               episodeId: playback.episodeId,
               podcastId: playback.podcastId,
@@ -273,10 +382,45 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
             });
           }
         }}
-        onEnded={playNextEpisode}
+        onEnded={() => {
+          const completedPlayback = playbackRef.current;
+
+          if (
+            !completedPlayback ||
+            completedEpisodeIdRef.current === completedPlayback.episodeId
+          ) {
+            return;
+          }
+
+          completedEpisodeIdRef.current = completedPlayback.episodeId;
+          isChangingEpisodeRef.current = true;
+          saveEpisodePlaybackProgress({
+            episodeId: completedPlayback.episodeId,
+            podcastId: completedPlayback.podcastId,
+            positionMs: completedPlayback.durationMs ?? completedPlayback.positionMs,
+            durationMs: completedPlayback.durationMs,
+            updatedAt: new Date().toISOString(),
+          });
+          playNextEpisode();
+        }}
       />
     </MediaPlayerContext.Provider>
   );
+}
+
+function loadEpisodeAudio(
+  audio: HTMLAudioElement | null,
+  playback: CurrentEpisodePlayback,
+) {
+  if (!audio) {
+    return;
+  }
+
+  audio.pause();
+  audio.src = playback.audioUrl;
+  audio.load();
+  audio.currentTime = playback.positionMs / 1000;
+  audio.playbackRate = playback.playbackRate;
 }
 
 export function useMediaPlayer() {

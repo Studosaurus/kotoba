@@ -92,7 +92,9 @@ Primary file:
 Current behavior:
 
 - Saved tab displays locally saved cards.
+- Saved list rows are compact and show only the Japanese phrase, concise meaning, one example, mastery progress, and delete control.
 - Tapping a saved card opens a detail view.
+- Word details are ordered as definition, example, grammar, recording, metadata, and source.
 - Detail view shows phrase, reading, translation, meaning, grammar, example, tags, source, mastery, and recording.
 - Source context can be edited or cleared locally.
 - Recording appears in the saved card/detail and can be replaced.
@@ -114,6 +116,9 @@ Current behavior:
 - Incorrect answers remain in the queue.
 - Mastery level updates locally.
 - Mastery progress and level-up moments are present.
+- Mastery advancement requires successful recall across distinct local days as well as minimum review counts and scheduling intervals; repeated same-session answers cannot rapidly advance a word.
+- Familiar requires 3 successes across 2 days, Strong requires 6 across 4 days with a 14-day interval, and Mastered requires 10 across 7 days with a 60-day interval.
+- A lapse returns a prompt to Learning and requires fresh successful days before higher mastery can be regained.
 - Japanese answer fields have web-level Japanese keyboard hints, but iOS PWAs cannot reliably force keyboard language switching like native iOS apps.
 
 ### Podcast Listening
@@ -136,6 +141,12 @@ Current behavior:
 - Search and add-RSS controls appear below the show grid.
 - Listening stats and goals appear on the main show selection page.
 - Daily goal is shown by default; full stats and weekly/monthly goals are behind an expand control.
+- Listening days reset at local midnight, including while the app remains open or returns from the background.
+- Weekly and monthly totals are derived from preserved daily history using the device's local calendar.
+- Listening credit represents real listening time, adjusting media progress for playback speed while rejecting seeks and implausible playback jumps.
+- Goal progress remains visible above 100% and shows listening time beyond the configured goal.
+- A local learning streak remains active when the learner either listens to a podcast or completes a study review that day.
+- Daily achievement ratings distinguish activity, 25%, 50%, 75%, goal completion, 125% progress, and 150% progress without treating study-only days as listening-goal completion.
 - Show detail page lists episodes.
 - Episode ordering can be toggled oldest/newest and is saved locally.
 - Episode progress and listened state are saved locally.
@@ -145,6 +156,8 @@ Current behavior:
 - Player supports play/pause, scrub, previous/next episode, skip back/forward, playback speed, and capture.
 - Playback speed options are `0.8x`, `0.85x`, `0.9x`, `0.95x`, and `1x`.
 - Finishing an episode advances to the next episode instead of looping.
+- Podcast playback is suspended before voice capture opens the microphone and the audio element is rebuilt afterward so iOS audio-session changes do not leave podcast audio unusable.
+- Episode completion is guarded against duplicate and stale audio events before advancing through the saved queue.
 
 ### Source Context
 
@@ -193,6 +206,7 @@ Known local storage keys include:
 - `kotoba:episode-progress`
 - `kotoba:media-settings`
 - `kotoba:listening-stats`
+- `kotoba:learning-activity`
 - `kotoba:permission-settings`
 - `kotoba:app-version`
 
@@ -258,4 +272,3 @@ $env:PATH = "$nodeDir;$env:PATH"
 5. Improve saved word detail and source editing once real usage reveals friction.
 6. Keep backend/auth deferred until the local flow feels worth preserving across devices.
 7. Before backend work, use `BACKEND_PLAN.md` to implement Supabase persistence deliberately.
-

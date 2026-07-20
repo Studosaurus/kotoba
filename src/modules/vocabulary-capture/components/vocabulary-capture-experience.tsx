@@ -11,6 +11,10 @@ import type { MutableRefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PlaybackState } from "@/domains/media/types";
 import { saveMicrophonePermissionState } from "@/lib/local-permission-settings";
+import {
+  preserveKnownStudyDays,
+  recordStudyReview,
+} from "@/lib/local-learning-activity";
 import { useMediaPlayer } from "@/modules/media/components/media-player-provider";
 import type { CurrentEpisodePlayback } from "@/modules/media/local/local-media-types";
 import type {
@@ -54,7 +58,11 @@ interface CurrentPlaybackResponse {
 }
 
 export function VocabularyCaptureExperience() {
-  const { playback: mediaPlayback } = useMediaPlayer();
+  const {
+    playback: mediaPlayback,
+    prepareForMicrophoneCapture,
+    recoverFromMicrophoneCapture,
+  } = useMediaPlayer();
   const [phrase, setPhrase] = useState("");
   const [analysis, setAnalysis] = useState<VocabularyAnalysis | null>(null);
   const [status, setStatus] = useState<VocabularyCaptureStatus>("empty");
@@ -101,6 +109,10 @@ export function VocabularyCaptureExperience() {
   useEffect(() => {
     void Promise.resolve().then(refreshConnectorState);
   }, [refreshConnectorState]);
+
+  useEffect(() => {
+    preserveKnownStudyDays(deck.reviewCards.map((card) => card.lastReviewedAt));
+  }, [deck.reviewCards]);
 
   const updateDeck = (nextDeck: LocalVocabularyDeck) => {
     setDeck(nextDeck);
@@ -313,6 +325,7 @@ export function VocabularyCaptureExperience() {
 
   const reviewCard = (reviewCardId: string, rating: ReviewRating) => {
     let reviewedCard: LocalReviewCard | null = null;
+    const reviewedAt = new Date();
 
     updateDeck({
       ...deck,
@@ -321,10 +334,11 @@ export function VocabularyCaptureExperience() {
           return card;
         }
 
-        reviewedCard = applyReviewRating(card, rating);
+        reviewedCard = applyReviewRating(card, rating, reviewedAt);
         return reviewedCard;
       }),
     });
+    recordStudyReview(reviewedAt);
 
     return reviewedCard;
   };
@@ -337,7 +351,7 @@ export function VocabularyCaptureExperience() {
       mediaRecorderRef,
       mediaStreamRef,
       audioClipPromiseRef,
-    });
+    }).finally(recoverFromMicrophoneCapture);
     recognitionRef.current = null;
     shouldAnalyzeOnSpeechEndRef.current = false;
     hasFinalizedSpeechRef.current = false;
@@ -405,7 +419,7 @@ export function VocabularyCaptureExperience() {
         mediaRecorderRef,
         mediaStreamRef,
         audioClipPromiseRef,
-      });
+      }).finally(recoverFromMicrophoneCapture);
       setIsRecording(false);
       recognitionRef.current = null;
       saveMicrophonePermissionState(event.error === "not-allowed" ? "denied" : "unknown");
@@ -426,6 +440,7 @@ export function VocabularyCaptureExperience() {
       setValidationErrors({});
       setStatus("empty");
       setIsRecording(true);
+      prepareForMicrophoneCapture();
       await startAudioClipCapture({
         mediaRecorderRef,
         mediaStreamRef,
@@ -441,7 +456,7 @@ export function VocabularyCaptureExperience() {
         mediaRecorderRef,
         mediaStreamRef,
         audioClipPromiseRef,
-      });
+      }).finally(recoverFromMicrophoneCapture);
       recognitionRef.current = null;
       setIsRecording(false);
       saveMicrophonePermissionState("denied");
@@ -492,6 +507,7 @@ export function VocabularyCaptureExperience() {
       mediaStreamRef,
       audioClipPromiseRef,
     });
+    recoverFromMicrophoneCapture();
     shouldAnalyzeOnSpeechEndRef.current = false;
 
     if (!transcript) {

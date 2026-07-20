@@ -10,7 +10,6 @@ const DAY_MS = 24 * 60 * MINUTE_MS;
 const MASTERY_LEVELS: MasteryLevel[] = ["new", "learning", "familiar", "strong", "mastered"];
 
 interface NextSchedule {
-  masteryLevel: MasteryLevel;
   intervalDays: number;
   ease: number;
   nextDueAt: Date;
@@ -49,10 +48,11 @@ export function applyReviewRating(
 ): LocalReviewCard {
   const next = calculateNextSchedule(card, rating, reviewedAt);
   const wasMiss = rating === "again";
-
-  return {
+  const successfulReviewDays = wasMiss
+    ? (card.successfulReviewDays ?? [])
+    : addSuccessfulReviewDay(card.successfulReviewDays ?? [], reviewedAt);
+  const reviewedCard: LocalReviewCard = {
     ...card,
-    masteryLevel: next.masteryLevel,
     reviewCount: card.reviewCount + 1,
     correctCount: card.correctCount + (wasMiss ? 0 : 1),
     incorrectCount: card.incorrectCount + (wasMiss ? 1 : 0),
@@ -60,8 +60,15 @@ export function applyReviewRating(
     intervalDays: next.intervalDays,
     ease: next.ease,
     lastReviewedAt: reviewedAt.toISOString(),
+    successfulReviewDays,
+    lastLapseAt: wasMiss ? reviewedAt.toISOString() : card.lastLapseAt,
     nextDueAt: next.nextDueAt.toISOString(),
     updatedAt: reviewedAt.toISOString(),
+  };
+
+  return {
+    ...reviewedCard,
+    masteryLevel: deriveMastery(reviewedCard),
   };
 }
 
@@ -144,7 +151,7 @@ export function getDueTimelineBuckets(reviewCards: LocalReviewCard[], now = new 
 }
 
 export function didMasteryIncrease(previous: MasteryLevel, next: MasteryLevel) {
-  return masteryRank(next) > masteryRank(previous);
+  return masteryRank(next) > masteryRank(previous) && masteryRank(next) >= masteryRank("familiar");
 }
 
 export function formatMastery(level: MasteryLevel) {
@@ -178,7 +185,6 @@ function calculateNextSchedule(
 ): NextSchedule {
   if (rating === "again") {
     return {
-      masteryLevel: "learning",
       intervalDays: 0,
       ease: Math.max(1.3, card.ease - 0.25),
       nextDueAt: reviewedAt,
@@ -188,7 +194,6 @@ function calculateNextSchedule(
   if (rating === "hard") {
     const intervalDays = Math.max(1, Math.round((card.intervalDays || 1) * 1.2));
     return {
-      masteryLevel: deriveMastery(intervalDays, card.lapseCount),
       intervalDays,
       ease: Math.max(1.3, card.ease - 0.1),
       nextDueAt: new Date(reviewedAt.getTime() + intervalDays * DAY_MS),
@@ -199,7 +204,6 @@ function calculateNextSchedule(
     const ease = Math.min(3, card.ease + 0.15);
     const intervalDays = Math.max(7, Math.round((card.intervalDays || 2) * ease * 1.5));
     return {
-      masteryLevel: deriveMastery(intervalDays, card.lapseCount),
       intervalDays,
       ease,
       nextDueAt: new Date(reviewedAt.getTime() + intervalDays * DAY_MS),
@@ -208,31 +212,77 @@ function calculateNextSchedule(
 
   const intervalDays = Math.max(3, Math.round((card.intervalDays || 1) * card.ease));
   return {
-    masteryLevel: deriveMastery(intervalDays, card.lapseCount),
     intervalDays,
     ease: card.ease,
     nextDueAt: new Date(reviewedAt.getTime() + intervalDays * DAY_MS),
   };
 }
 
-function deriveMastery(intervalDays: number, lapseCount: number): MasteryLevel {
-  if (intervalDays >= 60 && lapseCount <= 1) {
+export function recalculateReviewCardMastery(card: LocalReviewCard): LocalReviewCard {
+  const successfulReviewDays = normalizeSuccessfulReviewDays(card);
+  const normalizedCard = { ...card, successfulReviewDays };
+
+  return {
+    ...normalizedCard,
+    masteryLevel: deriveMastery(normalizedCard),
+  };
+}
+
+function deriveMastery(card: LocalReviewCard): MasteryLevel {
+  if (card.reviewCount === 0) {
+    return "new";
+  }
+
+  const successfulDays = successfulDaysAfterLastLapse(card);
+
+  if (card.correctCount >= 10 && successfulDays >= 7 && card.intervalDays >= 60) {
     return "mastered";
   }
 
-  if (intervalDays >= 14) {
+  if (card.correctCount >= 6 && successfulDays >= 4 && card.intervalDays >= 14) {
     return "strong";
   }
 
-  if (intervalDays >= 3) {
+  if (card.correctCount >= 3 && successfulDays >= 2 && card.intervalDays >= 3) {
     return "familiar";
   }
 
-  if (intervalDays >= 1) {
-    return "learning";
+  return "learning";
+}
+
+function addSuccessfulReviewDay(days: string[], reviewedAt: Date) {
+  return Array.from(new Set([...days, getLocalDayKey(reviewedAt)])).sort().slice(-30);
+}
+
+function normalizeSuccessfulReviewDays(card: LocalReviewCard) {
+  if (card.successfulReviewDays?.length) {
+    return Array.from(new Set(card.successfulReviewDays)).sort().slice(-30);
   }
 
-  return "new";
+  if (card.correctCount > 0 && card.lastReviewedAt) {
+    return [getLocalDayKey(new Date(card.lastReviewedAt))];
+  }
+
+  return [];
+}
+
+function successfulDaysAfterLastLapse(card: LocalReviewCard) {
+  const successfulDays = normalizeSuccessfulReviewDays(card);
+
+  if (!card.lastLapseAt) {
+    return successfulDays.length;
+  }
+
+  const lapseDay = getLocalDayKey(new Date(card.lastLapseAt));
+  return successfulDays.filter((day) => day > lapseDay).length;
+}
+
+function getLocalDayKey(value: Date) {
+  return [
+    value.getFullYear(),
+    (value.getMonth() + 1).toString().padStart(2, "0"),
+    value.getDate().toString().padStart(2, "0"),
+  ].join("-");
 }
 
 export function masteryRank(level: MasteryLevel) {

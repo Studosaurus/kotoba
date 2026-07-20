@@ -15,14 +15,21 @@ import {
   SkipBack,
   SkipForward,
   FastForward,
+  Flame,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { RssPodcastFeed } from "@/connectors/rss/types";
+import {
+  getDailyAchievementRating,
+  getLearningStreak,
+  loadLearningActivityHistory,
+  type DailyAchievementRating,
+} from "@/lib/local-learning-activity";
 import { useMediaPlayer } from "./media-player-provider";
 import type { PodcastEpisode, PodcastSource } from "../local/local-media-types";
 import {
-  getCurrentListeningPeriodKeys,
+  getCurrentListeningPeriodTotals,
   loadEpisodePlaybackProgress,
   loadListeningStats,
   loadMediaUserSettings,
@@ -150,7 +157,35 @@ export function PodcastMediaExperience({
 
   useEffect(() => {
     const intervalId = window.setInterval(() => setStatsVersion((version) => version + 1), 5000);
-    return () => window.clearInterval(intervalId);
+    let midnightTimeoutId: number;
+
+    const scheduleMidnightRefresh = () => {
+      const now = new Date();
+      const nextMidnight = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() + 1,
+      );
+
+      midnightTimeoutId = window.setTimeout(() => {
+        setStatsVersion((version) => version + 1);
+        scheduleMidnightRefresh();
+      }, nextMidnight.getTime() - now.getTime() + 100);
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        setStatsVersion((version) => version + 1);
+      }
+    };
+
+    scheduleMidnightRefresh();
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.clearTimeout(midnightTimeoutId);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, []);
 
   const openPodcast = async (podcast: PodcastSource) => {
@@ -789,10 +824,17 @@ function ListeningSummary({
   void statsVersion;
   const [isExpanded, setIsExpanded] = useState(false);
   const stats = loadListeningStats();
-  const keys = getCurrentListeningPeriodKeys();
-  const todayMs = stats.byDay[keys.day]?.listenedMs ?? 0;
-  const weekMs = stats.byWeek[keys.week]?.listenedMs ?? 0;
-  const monthMs = stats.byMonth[keys.month]?.listenedMs ?? 0;
+  const learningActivity = loadLearningActivityHistory();
+  const { todayMs, weekMs, monthMs } = getCurrentListeningPeriodTotals(stats);
+  const streak = getLearningStreak({
+    history: learningActivity,
+    listeningByDay: stats.byDay,
+  });
+  const dailyRating = getDailyAchievementRating({
+    listenedMs: todayMs,
+    goalMinutes: mediaSettings.goals.dailyMinutes,
+    studyReviews: streak.todayStudyReviews,
+  });
 
   return (
     <section className="rounded-[1.5rem] bg-[#17191d] p-4">
@@ -813,6 +855,23 @@ function ListeningSummary({
             aria-hidden="true"
           />
         </button>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <div className="rounded-2xl bg-[#202329] p-3">
+          <p className="flex items-center gap-1.5 text-sm font-semibold text-[#f8f9fb]">
+            <Flame className="h-4 w-4 text-[#f8c471]" aria-hidden="true" />
+            {streak.count} day{streak.count === 1 ? "" : "s"}
+          </p>
+          <p className="mt-1 text-xs font-semibold text-[#9aa0a6]">
+            {streak.isActiveToday ? "Streak active today" : "Study or listen today"}
+          </p>
+        </div>
+        <div className="rounded-2xl bg-[#202329] p-3">
+          <p className={`text-sm font-semibold ${getRatingTextColor(dailyRating)}`}>
+            {formatDailyRating(dailyRating)}
+          </p>
+          <p className="mt-1 text-xs font-semibold text-[#9aa0a6]">Today&apos;s rating</p>
+        </div>
       </div>
       <div className="mt-4">
         <GoalProgress
@@ -857,6 +916,42 @@ function ListeningSummary({
   );
 }
 
+function formatDailyRating(rating: DailyAchievementRating) {
+  const labels: Record<DailyAchievementRating, string> = {
+    "not-started": "Not started",
+    active: "Active",
+    "quarter-goal": "25% reached",
+    "half-goal": "Halfway",
+    "three-quarter-goal": "75% reached",
+    "goal-met": "Goal met",
+    strong: "Strong",
+    exceptional: "Exceptional",
+  };
+
+  return labels[rating];
+}
+
+function getRatingTextColor(rating: DailyAchievementRating) {
+  if (rating === "exceptional") {
+    return "text-[#f8c471]";
+  }
+
+  if (rating === "strong" || rating === "goal-met") {
+    return "text-[#9be7a8]";
+  }
+
+  if (
+    rating === "active" ||
+    rating === "quarter-goal" ||
+    rating === "half-goal" ||
+    rating === "three-quarter-goal"
+  ) {
+    return "text-[#a8c7fa]";
+  }
+
+  return "text-[#9aa0a6]";
+}
+
 function ListeningStat({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-2xl bg-[#202329] p-3">
@@ -878,14 +973,15 @@ function GoalProgress({
   onChange(goalMinutes: number): void;
 }) {
   const goalMs = goalMinutes * 60_000;
-  const progress = goalMs > 0 ? Math.min(1, valueMs / goalMs) : 0;
+  const progress = goalMs > 0 ? valueMs / goalMs : 0;
+  const progressPercent = Math.round(progress * 100);
+  const overGoalMs = Math.max(0, valueMs - goalMs);
 
   return (
     <div>
       <div className="flex items-center justify-between gap-3">
         <label className="text-xs font-semibold text-[#bdc1c6]">{label}</label>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-[#9aa0a6]">{Math.round(progress * 100)}%</span>
           <input
             type="number"
             min={5}
@@ -900,9 +996,22 @@ function GoalProgress({
           <span className="text-xs text-[#9aa0a6]">min</span>
         </div>
       </div>
+      <p
+        className={`mt-1 text-xs ${progress >= 1 ? "font-semibold text-[#9be7a8]" : "text-[#9aa0a6]"}`}
+      >
+        {formatListeningDuration(valueMs)} listened · {progressPercent}%
+      </p>
       <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#2b2f36]">
-        <div className="h-full rounded-full bg-[#a8c7fa]" style={{ width: `${progress * 100}%` }} />
+        <div
+          className={`h-full rounded-full ${progress >= 1 ? "bg-[#9be7a8]" : "bg-[#a8c7fa]"}`}
+          style={{ width: `${Math.min(1, progress) * 100}%` }}
+        />
       </div>
+      {overGoalMs > 0 ? (
+        <p className="mt-1 text-right text-xs font-semibold text-[#9be7a8]">
+          +{formatListeningDuration(overGoalMs)} beyond goal
+        </p>
+      ) : null}
     </div>
   );
 }
