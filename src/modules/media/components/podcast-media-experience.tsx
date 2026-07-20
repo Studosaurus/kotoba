@@ -16,6 +16,7 @@ import {
   SkipForward,
   FastForward,
   Flame,
+  Library,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -56,11 +57,17 @@ const PLAYBACK_SPEED_OPTIONS = [0.8, 0.85, 0.9, 0.95, 1];
 export function PodcastMediaExperience({
   isEmbedded = false,
   onCollapse,
+  onBrowseShows,
+  onOpenCurrentShow,
   initialView = "library",
+  initialPodcastId,
 }: {
   isEmbedded?: boolean;
   onCollapse?: () => void;
+  onBrowseShows?: () => void;
+  onOpenCurrentShow?: () => void;
   initialView?: "library" | "player";
+  initialPodcastId?: string;
 }) {
   const router = useRouter();
   const player = useMediaPlayer();
@@ -254,6 +261,18 @@ export function PodcastMediaExperience({
     };
   }, [initialView, player.playback, podcasts, view.name, playerHasPreviousView]);
 
+  useEffect(() => {
+    if (!initialPodcastId || view.name !== "library") {
+      return;
+    }
+
+    const podcast = podcasts.find((item) => item.id === initialPodcastId);
+
+    if (podcast) {
+      void Promise.resolve().then(() => openPodcast(podcast));
+    }
+  }, [initialPodcastId, podcasts, view.name]);
+
   const addPodcast = async () => {
     const trimmedFeedUrl = feedUrl.trim();
 
@@ -313,6 +332,11 @@ export function PodcastMediaExperience({
             <button
               type="button"
               onClick={() => {
+                if (onBrowseShows) {
+                  onBrowseShows();
+                  return;
+                }
+
                 if (view.previous) {
                   setView(view.previous);
                   return;
@@ -321,9 +345,9 @@ export function PodcastMediaExperience({
                 setView({ name: "library" });
               }}
               className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-black/20 text-[#f2f3f5] outline-none focus:ring-4 focus:ring-white/20"
-              aria-label={view.previous ? "Back to episodes" : "Back to podcasts"}
+              aria-label="Browse shows"
             >
-              <ArrowLeft className="h-6 w-6" aria-hidden="true" />
+              <Library className="h-5 w-5" aria-hidden="true" />
             </button>
             {onCollapse ? (
               <button
@@ -338,7 +362,7 @@ export function PodcastMediaExperience({
               <div className="h-11 w-11" />
             )}
           </header>
-          <FullPlayer onCapture={captureCurrentPlayback} />
+          <FullPlayer onCapture={captureCurrentPlayback} onOpenShow={onOpenCurrentShow} />
         </div>
       </section>
     );
@@ -571,7 +595,13 @@ function PodcastHeader({
   );
 }
 
-function FullPlayer({ onCapture }: { onCapture(): void }) {
+function FullPlayer({
+  onCapture,
+  onOpenShow,
+}: {
+  onCapture(): void;
+  onOpenShow?: () => void;
+}) {
   const player = useMediaPlayer();
   const playback = player.playback;
 
@@ -595,7 +625,17 @@ function FullPlayer({ onCapture }: { onCapture(): void }) {
       <div className="mt-1 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="line-clamp-2 text-2xl font-bold leading-tight text-white">{playback.episodeTitle}</h2>
-          <p className="mt-1 text-lg text-white/75">{playback.podcastTitle}</p>
+          {onOpenShow ? (
+            <button
+              type="button"
+              onClick={onOpenShow}
+              className="mt-1 text-left text-lg text-white/75 underline-offset-4 hover:underline focus:outline-none focus:ring-4 focus:ring-white/20"
+            >
+              {playback.podcastTitle}
+            </button>
+          ) : (
+            <p className="mt-1 text-lg text-white/75">{playback.podcastTitle}</p>
+          )}
         </div>
         <button
           type="button"

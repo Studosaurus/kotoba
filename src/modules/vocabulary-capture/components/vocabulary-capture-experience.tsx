@@ -3,8 +3,8 @@
 import {
   AlertTriangle,
   CheckCircle2,
+  Library,
   Settings,
-  UserCircle,
 } from "lucide-react";
 import Link from "next/link";
 import type { MutableRefObject } from "react";
@@ -525,23 +525,23 @@ export function VocabularyCaptureExperience() {
       <div className="mx-auto max-w-xl space-y-3">
         <header className="flex items-center justify-between">
           <Link
-            href="/settings"
+            href="/modules/media"
             className="relative inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#17191d] text-[#f2f3f5] outline-none focus:ring-4 focus:ring-[#8ab4f8]/25"
-            aria-label="Settings"
+            aria-label="Browse shows"
           >
-            <Settings className="h-5 w-5" aria-hidden="true" />
-            {connectorState.connected ? (
+            <Library className="h-5 w-5" aria-hidden="true" />
+            {mediaPlayback ? (
               <span className="absolute right-1 top-1 h-3 w-3 rounded-full bg-[#9be7a8]" />
             ) : null}
           </Link>
           <h1 className="text-xl font-semibold text-[#dfe2ea]">Kotoba</h1>
-          <button
-            type="button"
+          <Link
+            href="/settings"
             className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#17191d] text-[#a8c7fa] outline-none focus:ring-4 focus:ring-[#8ab4f8]/25"
-            aria-label="Account"
+            aria-label="Settings"
           >
-            <UserCircle className="h-6 w-6" aria-hidden="true" />
-          </button>
+            <Settings className="h-5 w-5" aria-hidden="true" />
+          </Link>
         </header>
 
         <ViewTabs

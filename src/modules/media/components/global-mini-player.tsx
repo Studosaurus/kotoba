@@ -1,10 +1,12 @@
 "use client";
 
 import { ChevronDown, Pause, Play } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { PodcastMediaExperience } from "./podcast-media-experience";
 import { useMediaPlayer } from "./media-player-provider";
 
 export function GlobalMiniPlayer() {
+  const router = useRouter();
   const { playback, isExpanded, setExpanded, togglePlay, seek } = useMediaPlayer();
 
   const durationMs = playback?.durationMs ?? 0;
@@ -16,8 +18,16 @@ export function GlobalMiniPlayer() {
         <div className="fixed inset-0 z-[70] bg-[#202124] text-[#f8f9fb]">
           <PodcastMediaExperience
             isEmbedded
-            initialView={playback ? "player" : "library"}
+            initialView="player"
             onCollapse={() => setExpanded(false)}
+            onBrowseShows={() => {
+              setExpanded(false);
+              router.push("/modules/media");
+            }}
+            onOpenCurrentShow={() => {
+              setExpanded(false);
+              router.push(`/modules/media?podcast=${encodeURIComponent(playback?.podcastId ?? "")}`);
+            }}
           />
         </div>
       ) : null}

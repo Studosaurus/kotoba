@@ -66,6 +66,7 @@ Primary file:
 Current behavior:
 
 - App opens on Vocabulary Capture.
+- Capture navigation uses Shows on the left and Settings on the right, and the source banner also opens podcast selection.
 - Mobile-first dark UI inspired by Google Translate.
 - Japanese text capture supports typing, paste, Enter-to-submit, and microphone capture.
 - Speech recognition uses Japanese language mode where available.
@@ -153,6 +154,8 @@ Current behavior:
 - Dedicated full player page exists.
 - Mini player persists at the bottom while browsing.
 - Expanding the mini player opens the player page.
+- Expanded playback is player-only; browsing Shows exits the overlay to the normal podcast page so the mini player remains available.
+- The full player has a Shows control, and its podcast title opens that show's episode list.
 - Player supports play/pause, scrub, previous/next episode, skip back/forward, playback speed, and capture.
 - Playback speed options are `0.8x`, `0.85x`, `0.9x`, `0.95x`, and `1x`.
 - Finishing an episode advances to the next episode instead of looping.

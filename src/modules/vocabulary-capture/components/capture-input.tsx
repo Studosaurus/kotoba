@@ -1,6 +1,7 @@
 "use client";
 
 import { Cable, Clipboard, Loader2, Mic, Music2, RotateCcw, Send, X } from "lucide-react";
+import Link from "next/link";
 import { useId } from "react";
 import type { PlaybackState } from "@/domains/media/types";
 
@@ -153,7 +154,7 @@ function CaptureSourceHeader({
 }) {
   if (!connectorState.connected && !connectorState.needsConfiguration) {
     return (
-      <div className="px-5 pt-4">
+      <Link href="/modules/media" className="block px-5 pt-4 outline-none focus:ring-4 focus:ring-[#8ab4f8]/20">
         <div className="rounded-2xl bg-[#17191d] px-4 py-2.5">
           <p className="flex items-center gap-2 text-sm font-semibold text-[#f8f9fb]">
             <Cable className="h-4 w-4 text-[#9aa0a6]" aria-hidden="true" />
@@ -163,12 +164,12 @@ function CaptureSourceHeader({
             Open Podcasts to choose an episode before capturing.
           </p>
         </div>
-      </div>
+      </Link>
     );
   }
 
   return (
-    <div className="px-5 pt-4">
+    <Link href="/modules/media" className="block px-5 pt-4 outline-none focus:ring-4 focus:ring-[#8ab4f8]/20">
       <div className="rounded-2xl bg-[#17191d] px-4 py-2.5">
         <p className="flex items-center gap-2 text-sm font-semibold text-[#f8f9fb]">
           <Music2 className="h-4 w-4 text-[#a8c7fa]" aria-hidden="true" />
@@ -189,7 +190,7 @@ function CaptureSourceHeader({
           </p>
         )}
       </div>
-    </div>
+    </Link>
   );
 }
 
