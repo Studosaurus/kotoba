@@ -47,10 +47,12 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
   const isChangingEpisodeRef = useRef(false);
   const isSeekingRef = useRef(false);
   const completedEpisodeIdRef = useRef<string | null>(null);
+  const microphoneRecoveryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [playback, setPlayback] = useState<CurrentEpisodePlayback | null>(() =>
     loadCurrentEpisodePlayback(),
   );
   const [isExpanded, setExpanded] = useState(false);
+  const [audioElementGeneration, setAudioElementGeneration] = useState(0);
   const audioUrl = playback?.audioUrl;
   const isPlaying = playback?.isPlaying;
   const playbackRate = playback?.playbackRate;
@@ -58,6 +60,15 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
   useEffect(() => {
     playbackRef.current = playback;
   }, [playback]);
+
+  useEffect(
+    () => () => {
+      if (microphoneRecoveryTimeoutRef.current) {
+        clearTimeout(microphoneRecoveryTimeoutRef.current);
+      }
+    },
+    [],
+  );
 
   const updatePlayback = useCallback((updater: (playback: CurrentEpisodePlayback) => CurrentEpisodePlayback) => {
     setPlayback((current) => {
@@ -220,15 +231,20 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
       return;
     }
 
-    const positionSeconds = currentPlayback.positionMs / 1000;
     audio.pause();
-    audio.src = currentPlayback.audioUrl;
-    audio.load();
-    audio.currentTime = positionSeconds;
-    audio.playbackRate = currentPlayback.playbackRate;
     lastTrackedPositionMsRef.current = currentPlayback.positionMs;
     lastTrackedAtMsRef.current = Date.now();
     updatePlayback((current) => ({ ...current, isPlaying: false }));
+
+    if (microphoneRecoveryTimeoutRef.current) {
+      clearTimeout(microphoneRecoveryTimeoutRef.current);
+    }
+
+    microphoneRecoveryTimeoutRef.current = setTimeout(() => {
+      microphoneRecoveryTimeoutRef.current = null;
+      audioRef.current = null;
+      setAudioElementGeneration((generation) => generation + 1);
+    }, 250);
   }, [updatePlayback]);
 
   const seek = useCallback(
@@ -293,7 +309,14 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
         updatePlayback((current) => ({ ...current, isPlaying: false }));
       });
     }
-  }, [audioUrl, isPlaying, playback?.positionMs, playbackRate, updatePlayback]);
+  }, [
+    audioElementGeneration,
+    audioUrl,
+    isPlaying,
+    playback?.positionMs,
+    playbackRate,
+    updatePlayback,
+  ]);
 
   const value = useMemo(
     () => ({
@@ -329,6 +352,7 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
     <MediaPlayerContext.Provider value={value}>
       {children}
       <audio
+        key={audioElementGeneration}
         ref={audioRef}
         onLoadedMetadata={(event) => {
           const durationMs = Math.floor(event.currentTarget.duration * 1000);
