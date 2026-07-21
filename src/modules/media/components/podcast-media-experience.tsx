@@ -79,6 +79,11 @@ export function PodcastMediaExperience({
   const [isOldestFirst, setIsOldestFirst] = useState(() => loadMediaUserSettings().isOldestFirst);
   const [mediaSettings, setMediaSettings] = useState(() => loadMediaUserSettings());
   const [statsVersion, setStatsVersion] = useState(0);
+  const episodeScrollContainerRef = useRef<HTMLElement | null>(null);
+  const episodeHeaderLastScrollTopRef = useRef(0);
+  const episodeHeaderDirectionRef = useRef<"up" | "down">("up");
+  const episodeHeaderTravelRef = useRef(0);
+  const [isEpisodeHeaderVisible, setIsEpisodeHeaderVisible] = useState(true);
   const hasConsumedInitialPodcastRef = useRef(false);
   const playerHasPreviousView = view.name === "player" && Boolean(view.previous);
   const filteredPodcasts = useMemo(() => {
@@ -95,6 +100,65 @@ export function PodcastMediaExperience({
         .includes(normalizedQuery),
     );
   }, [podcasts, query]);
+
+  useEffect(() => {
+    if (view.name !== "podcast") {
+      return;
+    }
+
+    const scrollContainer = episodeScrollContainerRef.current;
+
+    if (!scrollContainer) {
+      return;
+    }
+
+    episodeHeaderLastScrollTopRef.current = scrollContainer.scrollTop;
+    episodeHeaderDirectionRef.current = "up";
+    episodeHeaderTravelRef.current = 0;
+    setIsEpisodeHeaderVisible(true);
+
+    const handleScroll = () => {
+      const nextScrollTop = Math.max(0, scrollContainer.scrollTop);
+      const previousScrollTop = episodeHeaderLastScrollTopRef.current;
+      const delta = nextScrollTop - previousScrollTop;
+
+      episodeHeaderLastScrollTopRef.current = nextScrollTop;
+
+      if (nextScrollTop <= 24) {
+        episodeHeaderTravelRef.current = 0;
+        setIsEpisodeHeaderVisible(true);
+        return;
+      }
+
+      if (Math.abs(delta) < 1) {
+        return;
+      }
+
+      const direction = delta > 0 ? "down" : "up";
+
+      if (episodeHeaderDirectionRef.current !== direction) {
+        episodeHeaderDirectionRef.current = direction;
+        episodeHeaderTravelRef.current = 0;
+      }
+
+      episodeHeaderTravelRef.current += Math.abs(delta);
+
+      if (direction === "up" && episodeHeaderTravelRef.current >= 12) {
+        setIsEpisodeHeaderVisible(true);
+        episodeHeaderTravelRef.current = 0;
+      } else if (
+        direction === "down" &&
+        nextScrollTop > 88 &&
+        episodeHeaderTravelRef.current >= 28
+      ) {
+        setIsEpisodeHeaderVisible(false);
+        episodeHeaderTravelRef.current = 0;
+      }
+    };
+
+    scrollContainer.addEventListener("scroll", handleScroll, { passive: true });
+    return () => scrollContainer.removeEventListener("scroll", handleScroll);
+  }, [view.name]);
 
   useEffect(() => {
     const podcastsMissingArtwork = podcasts.filter((podcast) => !podcast.imageUrl).slice(0, 8);
@@ -374,9 +438,15 @@ export function PodcastMediaExperience({
 
   if (view.name === "podcast") {
     return (
-      <section className={getMediaShellClassName(isEmbedded)}>
+      <section ref={episodeScrollContainerRef} className={getMediaShellClassName(isEmbedded)}>
         <div className="mx-auto max-w-xl space-y-5">
-          <header className="flex items-center justify-between">
+          <header
+            className={`sticky top-[env(safe-area-inset-top)] z-30 -mx-2 flex items-center justify-between rounded-2xl bg-[#202124]/95 px-2 py-2 shadow-[0_10px_28px_rgb(0_0_0/0.24)] backdrop-blur transition duration-200 motion-reduce:transition-none ${
+              isEpisodeHeaderVisible
+                ? "translate-y-0 opacity-100"
+                : "pointer-events-none -translate-y-[calc(100%+1rem)] opacity-0"
+            }`}
+          >
             <button
               type="button"
               onClick={() => setView({ name: "library" })}
