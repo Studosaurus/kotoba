@@ -16,6 +16,7 @@ import type { CurrentEpisodePlayback, PodcastEpisode } from "../local/local-medi
 import {
   addListeningTime,
   loadCurrentEpisodePlayback,
+  loadEpisodePlaybackProgress,
   loadMediaUserSettings,
   saveEpisodePlaybackProgress,
   saveCurrentEpisodePlayback,
@@ -97,6 +98,7 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
   const playEpisode = useCallback((episode: PodcastEpisode, queue: PodcastEpisode[] = [episode]) => {
     const queueIndex = Math.max(0, queue.findIndex((queuedEpisode) => queuedEpisode.id === episode.id));
     const mediaSettings = loadMediaUserSettings();
+    const resumePositionMs = getEpisodeResumePositionMs(episode);
     const nextPlayback: CurrentEpisodePlayback = {
       podcastId: episode.podcastId,
       podcastTitle: episode.podcastTitle,
@@ -106,7 +108,7 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
       audioUrl: episode.audioUrl,
       feedUrl: episode.feedUrl,
       durationMs: episode.durationMs,
-      positionMs: 0,
+      positionMs: resumePositionMs,
       isPlaying: true,
       playbackRate: mediaSettings.playbackRate,
       queue,
@@ -116,8 +118,9 @@ export function MediaPlayerProvider({ children }: Readonly<{ children: ReactNode
 
     completedEpisodeIdRef.current = null;
     isChangingEpisodeRef.current = true;
+    pendingLoadPositionMsRef.current = resumePositionMs;
     loadEpisodeAudio(audioRef.current, nextPlayback);
-    lastTrackedPositionMsRef.current = 0;
+    lastTrackedPositionMsRef.current = resumePositionMs;
     lastTrackedAtMsRef.current = Date.now();
     playbackRef.current = nextPlayback;
     setPlayback(nextPlayback);
@@ -593,6 +596,22 @@ function loadEpisodeAudio(
   audio.load();
   audio.currentTime = playback.positionMs / 1000;
   audio.playbackRate = playback.playbackRate;
+}
+
+function getEpisodeResumePositionMs(episode: PodcastEpisode) {
+  const progress = loadEpisodePlaybackProgress()[episode.id];
+
+  if (!progress || progress.listenedAt) {
+    return 0;
+  }
+
+  const durationMs = progress.durationMs ?? episode.durationMs;
+
+  if (durationMs && progress.positionMs / durationMs >= 0.9) {
+    return 0;
+  }
+
+  return Math.max(0, progress.positionMs);
 }
 
 function requestNativeSeek(audio: HTMLAudioElement, positionMs: number) {
