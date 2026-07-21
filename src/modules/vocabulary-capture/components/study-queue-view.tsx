@@ -39,6 +39,7 @@ interface LevelUpEvent {
 interface MultipleChoiceOption {
   id: string;
   value: string;
+  kanaValue?: string;
 }
 
 export function StudyQueueView({
@@ -57,6 +58,9 @@ export function StudyQueueView({
   const [answer, setAnswer] = useState("");
   const [answerError, setAnswerError] = useState<string>();
   const [answerResult, setAnswerResult] = useState<AnswerResult | null>(null);
+  const [japaneseChoiceScript, setJapaneseChoiceScript] = useState<"kanji" | "hiragana">(
+    "kanji",
+  );
   const [levelUpEvent, setLevelUpEvent] = useState<LevelUpEvent | null>(null);
   const [isRecordingAnswer, setIsRecordingAnswer] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
@@ -67,10 +71,9 @@ export function StudyQueueView({
   const activeVocabularyCard = activeReviewCard
     ? vocabularyCards.find((card) => card.id === activeReviewCard.vocabularyCardId)
     : undefined;
-  const usesMultipleChoice = Boolean(
-    activeReviewCard &&
-      (activeReviewCard.masteryLevel === "new" || activeReviewCard.masteryLevel === "learning"),
-  );
+  const usesMultipleChoice = activeReviewCard
+    ? shouldUseMultipleChoice(activeReviewCard)
+    : false;
   const multipleChoiceOptions = useMemo(
     () =>
       activeReviewCard && activeVocabularyCard && usesMultipleChoice
@@ -300,6 +303,8 @@ export function StudyQueueView({
         <MultipleChoiceAnswers
           options={multipleChoiceOptions}
           answerType={activeReviewCard.type}
+          japaneseChoiceScript={japaneseChoiceScript}
+          onJapaneseChoiceScriptChange={setJapaneseChoiceScript}
           onChoose={(selectedAnswer) => {
             setAnswer(selectedAnswer);
             setAnswerResult(checkAnswer(activeReviewCard, activeVocabularyCard, selectedAnswer));
@@ -468,15 +473,39 @@ function LevelUpCard({ event }: { event: LevelUpEvent }) {
 function MultipleChoiceAnswers({
   options,
   answerType,
+  japaneseChoiceScript,
+  onJapaneseChoiceScriptChange,
   onChoose,
 }: {
   options: MultipleChoiceOption[];
   answerType: ReviewCardType;
+  japaneseChoiceScript: "kanji" | "hiragana";
+  onJapaneseChoiceScriptChange(value: "kanji" | "hiragana"): void;
   onChoose(value: string): void;
 }) {
+  const isJapaneseAnswer = answerType === "en_to_jp";
+
   return (
     <section className="rounded-[1.5rem] bg-[#17191d] p-4">
-      <p className="text-sm font-semibold text-[#bdc1c6]">Choose the best answer</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-[#bdc1c6]">Choose the best answer</p>
+        {isJapaneseAnswer ? (
+          <div className="flex rounded-full bg-[#101113] p-1" aria-label="Answer script">
+            {(["kanji", "hiragana"] as const).map((script) => (
+              <button
+                key={script}
+                type="button"
+                onClick={() => onJapaneseChoiceScriptChange(script)}
+                className="min-h-8 rounded-full px-3 text-xs font-semibold text-[#9aa0a6] outline-none focus:ring-4 focus:ring-[#8ab4f8]/20 data-[active=true]:bg-[#30343b] data-[active=true]:text-[#a8c7fa]"
+                data-active={japaneseChoiceScript === script}
+                aria-pressed={japaneseChoiceScript === script}
+              >
+                {script === "kanji" ? "漢字" : "ひらがな"}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
       <div className="mt-3 grid gap-2">
         {options.map((option) => (
           <button
@@ -486,7 +515,9 @@ function MultipleChoiceAnswers({
             lang={answerType === "en_to_jp" ? "ja" : "en"}
             className="min-h-14 rounded-2xl border border-[#30343b] bg-[#202329] px-4 py-3 text-left text-lg font-semibold leading-snug text-[#f8f9fb] outline-none transition hover:border-[#8ab4f8] hover:bg-[#26354a] focus:ring-4 focus:ring-[#8ab4f8]/25 active:scale-[0.99] motion-reduce:transition-none"
           >
-            {option.value}
+            {isJapaneseAnswer && japaneseChoiceScript === "hiragana"
+              ? option.kanaValue || option.value
+              : option.value}
           </button>
         ))}
       </div>
@@ -818,6 +849,8 @@ function buildMultipleChoiceOptions(
   const answerKind = getVocabularyKind(vocabularyCard);
   const optionValue = (card: LocalVocabularyCard) =>
     reviewCard.type === "en_to_jp" ? getJapaneseAnswer(card) : getShortEnglishAnswer(card);
+  const optionKanaValue = (card: LocalVocabularyCard) =>
+    reviewCard.type === "en_to_jp" ? card.analysis.readingKana : undefined;
   const correctValue = optionValue(vocabularyCard);
   const currentTags = new Set(vocabularyCard.analysis.suggestedTags.map((tag) => tag.toLowerCase()));
   const rankedDeckCandidates = vocabularyCards
@@ -835,13 +868,18 @@ function buildMultipleChoiceOptions(
         second.tagMatches - first.tagMatches ||
         first.random - second.random,
     )
-    .map(({ card }) => ({ id: card.id, value: optionValue(card) }));
+    .map(({ card }) => ({
+      id: card.id,
+      value: optionValue(card),
+      kanaValue: optionKanaValue(card),
+    }));
   const fallbackCandidates = [
     ...shuffle(beginnerDistractors.filter((item) => item.kind === answerKind)),
     ...shuffle(beginnerDistractors.filter((item) => item.kind !== answerKind)),
   ].map((item) => ({
     id: `fallback-${item.jp}-${item.en}`,
     value: reviewCard.type === "en_to_jp" ? item.jp : item.en,
+    kanaValue: reviewCard.type === "en_to_jp" ? item.kana : undefined,
   }));
   const distractors: MultipleChoiceOption[] = [];
   const seen = new Set([normalizeChoice(correctValue)]);
@@ -855,7 +893,26 @@ function buildMultipleChoiceOptions(
     if (distractors.length === 3) break;
   }
 
-  return shuffle([{ id: `correct-${vocabularyCard.id}`, value: correctValue }, ...distractors]);
+  return shuffle([
+    {
+      id: `correct-${vocabularyCard.id}`,
+      value: correctValue,
+      kanaValue: optionKanaValue(vocabularyCard),
+    },
+    ...distractors,
+  ]);
+}
+
+function shouldUseMultipleChoice(reviewCard: LocalReviewCard) {
+  if (reviewCard.masteryLevel === "new" || reviewCard.masteryLevel === "learning") {
+    return true;
+  }
+
+  if (reviewCard.masteryLevel === "familiar") {
+    return reviewCard.reviewCount % 3 !== 2;
+  }
+
+  return false;
 }
 
 function getJapaneseAnswer(card: LocalVocabularyCard) {
@@ -901,27 +958,32 @@ function randomInteger(minimum: number, maximum: number) {
 
 type DistractorKind = "verb" | "noun" | "adjective" | "adverb";
 
-const beginnerDistractors: Array<{ jp: string; en: string; kind: DistractorKind }> = [
-  { jp: "食べる", en: "eat", kind: "verb" },
-  { jp: "飲む", en: "drink", kind: "verb" },
-  { jp: "行く", en: "go", kind: "verb" },
-  { jp: "見る", en: "see", kind: "verb" },
-  { jp: "聞く", en: "listen", kind: "verb" },
-  { jp: "話す", en: "speak", kind: "verb" },
-  { jp: "読む", en: "read", kind: "verb" },
-  { jp: "書く", en: "write", kind: "verb" },
-  { jp: "時間", en: "time", kind: "noun" },
-  { jp: "場所", en: "place", kind: "noun" },
-  { jp: "仕事", en: "work", kind: "noun" },
-  { jp: "友達", en: "friend", kind: "noun" },
-  { jp: "大きい", en: "big", kind: "adjective" },
-  { jp: "小さい", en: "small", kind: "adjective" },
-  { jp: "新しい", en: "new", kind: "adjective" },
-  { jp: "難しい", en: "difficult", kind: "adjective" },
-  { jp: "いつも", en: "always", kind: "adverb" },
-  { jp: "ときどき", en: "sometimes", kind: "adverb" },
-  { jp: "ゆっくり", en: "slowly", kind: "adverb" },
-  { jp: "すぐ", en: "immediately", kind: "adverb" },
+const beginnerDistractors: Array<{
+  jp: string;
+  kana: string;
+  en: string;
+  kind: DistractorKind;
+}> = [
+  { jp: "食べる", kana: "たべる", en: "eat", kind: "verb" },
+  { jp: "飲む", kana: "のむ", en: "drink", kind: "verb" },
+  { jp: "行く", kana: "いく", en: "go", kind: "verb" },
+  { jp: "見る", kana: "みる", en: "see", kind: "verb" },
+  { jp: "聞く", kana: "きく", en: "listen", kind: "verb" },
+  { jp: "話す", kana: "はなす", en: "speak", kind: "verb" },
+  { jp: "読む", kana: "よむ", en: "read", kind: "verb" },
+  { jp: "書く", kana: "かく", en: "write", kind: "verb" },
+  { jp: "時間", kana: "じかん", en: "time", kind: "noun" },
+  { jp: "場所", kana: "ばしょ", en: "place", kind: "noun" },
+  { jp: "仕事", kana: "しごと", en: "work", kind: "noun" },
+  { jp: "友達", kana: "ともだち", en: "friend", kind: "noun" },
+  { jp: "大きい", kana: "おおきい", en: "big", kind: "adjective" },
+  { jp: "小さい", kana: "ちいさい", en: "small", kind: "adjective" },
+  { jp: "新しい", kana: "あたらしい", en: "new", kind: "adjective" },
+  { jp: "難しい", kana: "むずかしい", en: "difficult", kind: "adjective" },
+  { jp: "いつも", kana: "いつも", en: "always", kind: "adverb" },
+  { jp: "ときどき", kana: "ときどき", en: "sometimes", kind: "adverb" },
+  { jp: "ゆっくり", kana: "ゆっくり", en: "slowly", kind: "adverb" },
+  { jp: "すぐ", kana: "すぐ", en: "immediately", kind: "adverb" },
 ];
 
 function checkAnswer(
