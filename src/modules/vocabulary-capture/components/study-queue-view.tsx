@@ -332,7 +332,6 @@ export function StudyQueueView({
         <div className="space-y-3">
           <YourAnswer answer={answer} type={activeReviewCard.type} />
           {answerResult ? <AnswerFeedback result={answerResult} /> : null}
-          <FlashcardBack reviewCard={activeReviewCard} vocabularyCard={activeVocabularyCard} />
           <button
             type="button"
             onClick={() => {
@@ -370,6 +369,7 @@ export function StudyQueueView({
           >
             {answerResult?.isCorrect ? "Continue" : "Try again later"}
           </button>
+          <FlashcardBack reviewCard={activeReviewCard} vocabularyCard={activeVocabularyCard} />
         </div>
       )}
     </section>
