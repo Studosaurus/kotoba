@@ -36,6 +36,7 @@ import {
 import type {
   LocalAudioClip,
   LocalReviewCard,
+  LocalVocabularyCard,
   LocalVocabularyDeck,
   ReviewRating,
 } from "../local/local-vocabulary-types";
@@ -73,6 +74,8 @@ export function VocabularyCaptureExperience() {
   const [deck, setDeck] = useState<LocalVocabularyDeck>(() => loadLocalVocabularyDeck());
   const [activeView, setActiveView] = useState<VocabularyView>("capture");
   const [lastSavedPhrase, setLastSavedPhrase] = useState<string>();
+  const [duplicateMatch, setDuplicateMatch] = useState<{ id: string; phrase: string }>();
+  const [savedCardToOpen, setSavedCardToOpen] = useState<string>();
   const [unseenSavedCount, setUnseenSavedCount] = useState(0);
   const [isEnriching, setIsEnriching] = useState(false);
   const [playback, setPlayback] = useState<PlaybackState | null>(null);
@@ -144,6 +147,8 @@ export function VocabularyCaptureExperience() {
   const changeActiveView = (nextView: VocabularyView) => {
     if (nextView === "saved") {
       setUnseenSavedCount(0);
+    } else {
+      setSavedCardToOpen(undefined);
     }
 
     setActiveView(nextView);
@@ -159,6 +164,7 @@ export function VocabularyCaptureExperience() {
 
     setPhrase(trimmedPhrase);
     setLastSavedPhrase(undefined);
+    setDuplicateMatch(undefined);
     setInputError(undefined);
     setAnalysisError(undefined);
     setEnrichmentError(undefined);
@@ -235,6 +241,17 @@ export function VocabularyCaptureExperience() {
       return;
     }
 
+    const existingCard = findDuplicateVocabularyCard(analysis, deck.vocabularyCards);
+
+    if (existingCard) {
+      setDuplicateMatch({
+        id: existingCard.id,
+        phrase: existingCard.analysis.normalizedForm || existingCard.analysis.originalPhrase,
+      });
+      setStatus("ready");
+      return;
+    }
+
     setStatus("saving");
     await new Promise((resolve) => setTimeout(resolve, SAVE_LATENCY_MS));
     const savedPhrase = analysis.originalPhrase;
@@ -260,6 +277,7 @@ export function VocabularyCaptureExperience() {
       return nextDeck;
     });
     setLastSavedPhrase(savedPhrase);
+    setDuplicateMatch(undefined);
     setUnseenSavedCount((count) => count + 1);
     setPhrase("");
     setAnalysis(null);
@@ -374,6 +392,7 @@ export function VocabularyCaptureExperience() {
     transcriptRef.current = "";
     setPendingAudioClip(null);
     setLastSavedPhrase(undefined);
+    setDuplicateMatch(undefined);
     setPhrase("");
     setAnalysis(null);
     setInputError(undefined);
@@ -610,6 +629,16 @@ export function VocabularyCaptureExperience() {
 
             {lastSavedPhrase ? <SuccessState phrase={lastSavedPhrase} /> : null}
 
+            {duplicateMatch ? (
+              <DuplicateState
+                phrase={duplicateMatch.phrase}
+                onOpen={() => {
+                  setSavedCardToOpen(duplicateMatch.id);
+                  changeActiveView("saved");
+                }}
+              />
+            ) : null}
+
             {analysis && status !== "analysis-error" ? (
               <EditableAnalysisCard
                 analysis={analysis}
@@ -619,6 +648,7 @@ export function VocabularyCaptureExperience() {
                 isSaving={isSaving}
                 onChange={(nextAnalysis) => {
                   setAnalysis(nextAnalysis);
+                  setDuplicateMatch(undefined);
                   setValidationErrors({});
                 }}
                 onSave={saveAnalysis}
@@ -631,6 +661,7 @@ export function VocabularyCaptureExperience() {
           <SavedCardsView
             vocabularyCards={deck.vocabularyCards}
             reviewCards={deck.reviewCards}
+            initialSelectedCardId={savedCardToOpen}
             onDelete={deleteCard}
             onUpdateAudioClip={updateCardAudioClip}
             onUpdateSourceContext={updateCardSourceContext}
@@ -909,3 +940,96 @@ function SuccessState({ phrase }: { phrase: string }) {
     </section>
   );
 }
+
+function DuplicateState({ phrase, onOpen }: { phrase: string; onOpen(): void }) {
+  return (
+    <section
+      className="rounded-[1.5rem] border border-[#f8c471]/30 bg-[#3b3020] p-4"
+      aria-live="polite"
+    >
+      <div className="flex items-center gap-3">
+        <AlertTriangle className="h-5 w-5 shrink-0 text-[#f8c471]" aria-hidden="true" />
+        <p className="min-w-0 flex-1 text-sm font-medium text-[#f8f9fb]">
+          Already saved: <span lang="ja">{phrase}</span>
+        </p>
+        <button
+          type="button"
+          onClick={onOpen}
+          className="min-h-10 shrink-0 rounded-full bg-[#f8c471] px-4 text-sm font-semibold text-[#382b00] outline-none focus:ring-4 focus:ring-[#f8c471]/25"
+        >
+          View
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function findDuplicateVocabularyCard(
+  analysis: VocabularyAnalysis,
+  vocabularyCards: LocalVocabularyCard[],
+) {
+  const normalizedForm = normalizeJapaneseForDuplicate(analysis.normalizedForm);
+  const candidates = japaneseDuplicateCandidates(analysis);
+
+  return vocabularyCards.find((card) => {
+    const existingNormalizedForm = normalizeJapaneseForDuplicate(card.analysis.normalizedForm);
+    const meaningsOverlap = vocabularyMeaningsOverlap(analysis, card.analysis);
+
+    if (
+      normalizedForm &&
+      normalizedForm === existingNormalizedForm &&
+      (/\p{Script=Han}/u.test(normalizedForm) || meaningsOverlap)
+    ) {
+      return true;
+    }
+
+    const existingCandidates = new Set(japaneseDuplicateCandidates(card.analysis));
+    return meaningsOverlap && candidates.some((candidate) => existingCandidates.has(candidate));
+  });
+}
+
+function japaneseDuplicateCandidates(analysis: VocabularyAnalysis) {
+  return Array.from(
+    new Set(
+      [analysis.originalPhrase, analysis.normalizedForm, analysis.readingKana]
+        .map(normalizeJapaneseForDuplicate)
+        .filter(Boolean),
+    ),
+  );
+}
+
+function normalizeJapaneseForDuplicate(value: string) {
+  return value.normalize("NFKC").toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
+}
+
+function vocabularyMeaningsOverlap(first: VocabularyAnalysis, second: VocabularyAnalysis) {
+  const firstWords = new Set(
+    normalizeMeaningForDuplicate(`${first.conciseMeaning} ${first.naturalTranslation}`),
+  );
+  const secondWords = normalizeMeaningForDuplicate(
+    `${second.conciseMeaning} ${second.naturalTranslation}`,
+  );
+
+  return secondWords.some((word) => firstWords.has(word));
+}
+
+function normalizeMeaningForDuplicate(value: string) {
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 2 && !duplicateMeaningStopWords.has(word));
+}
+
+const duplicateMeaningStopWords = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "that",
+  "this",
+  "from",
+  "into",
+  "about",
+]);

@@ -23,6 +23,7 @@ import type { VocabularySourceContext } from "../types";
 interface SavedCardsViewProps {
   vocabularyCards: LocalVocabularyCard[];
   reviewCards: LocalReviewCard[];
+  initialSelectedCardId?: string;
   onDelete(cardId: string): void;
   onUpdateAudioClip(cardId: string, audioClip: LocalAudioClip): void;
   onUpdateSourceContext(cardId: string, sourceContext: VocabularySourceContext | undefined): void;
@@ -32,13 +33,14 @@ interface SavedCardsViewProps {
 export function SavedCardsView({
   vocabularyCards,
   reviewCards,
+  initialSelectedCardId,
   onDelete,
   onUpdateAudioClip,
   onUpdateSourceContext,
   onStudy,
 }: SavedCardsViewProps) {
   const [query, setQuery] = useState("");
-  const [selectedCardId, setSelectedCardId] = useState<string>();
+  const [selectedCardId, setSelectedCardId] = useState<string | undefined>(initialSelectedCardId);
   const rootRef = useRef<HTMLElement | null>(null);
   const listScrollPositionRef = useRef(0);
   const selectedCard = selectedCardId
