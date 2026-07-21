@@ -40,6 +40,7 @@ interface MultipleChoiceOption {
   id: string;
   value: string;
   kanaValue?: string;
+  isCorrect: boolean;
 }
 
 export function StudyQueueView({
@@ -64,9 +65,7 @@ export function StudyQueueView({
   const [answer, setAnswer] = useState("");
   const [answerError, setAnswerError] = useState<string>();
   const [answerResult, setAnswerResult] = useState<AnswerResult | null>(null);
-  const [japaneseChoiceScript, setJapaneseChoiceScript] = useState<"kanji" | "hiragana">(
-    "kanji",
-  );
+  const [japaneseChoiceScript, setJapaneseChoiceScript] = useState<"kanji" | "hiragana">("kanji");
   const [levelUpEvent, setLevelUpEvent] = useState<LevelUpEvent | null>(null);
   const [isRecordingAnswer, setIsRecordingAnswer] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
@@ -77,9 +76,7 @@ export function StudyQueueView({
   const activeVocabularyCard = activeReviewCard
     ? vocabularyCards.find((card) => card.id === activeReviewCard.vocabularyCardId)
     : undefined;
-  const usesMultipleChoice = activeReviewCard
-    ? shouldUseMultipleChoice(activeReviewCard)
-    : false;
+  const usesMultipleChoice = activeReviewCard ? shouldUseMultipleChoice(activeReviewCard) : false;
   const multipleChoiceOptions = useMemo(
     () =>
       activeReviewCard && activeVocabularyCard && usesMultipleChoice
@@ -196,8 +193,7 @@ export function StudyQueueView({
       return;
     }
 
-    const SpeechRecognitionConstructor =
-      window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    const SpeechRecognitionConstructor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
 
     if (!SpeechRecognitionConstructor) {
       setAnswerError("Speech recognition is not available in this browser.");
@@ -328,9 +324,16 @@ export function StudyQueueView({
           answerType={activeReviewCard.type}
           japaneseChoiceScript={japaneseChoiceScript}
           onJapaneseChoiceScriptChange={setJapaneseChoiceScript}
-          onChoose={(selectedAnswer) => {
-            setAnswer(selectedAnswer);
-            setAnswerResult(checkAnswer(activeReviewCard, activeVocabularyCard, selectedAnswer));
+          onChoose={(selectedOption) => {
+            const correctOption = multipleChoiceOptions.find((option) => option.isCorrect);
+            setAnswer(selectedOption.value);
+            setAnswerResult({
+              isCorrect: selectedOption.isCorrect,
+              expectedAnswer:
+                correctOption?.value ??
+                checkAnswer(activeReviewCard, activeVocabularyCard, selectedOption.value)
+                  .expectedAnswer,
+            });
             setAnswerError(undefined);
             setLevelUpEvent(null);
             setIsRevealed(true);
@@ -484,9 +487,7 @@ function AnswerFeedback({ result }: { result: AnswerResult }) {
   return (
     <div
       className={`rounded-[1.5rem] border p-4 ${
-        result.isCorrect
-          ? "border-[#9be7a8]/30 bg-[#17351f]"
-          : "border-[#ff9aa8]/30 bg-[#3a1f26]"
+        result.isCorrect ? "border-[#9be7a8]/30 bg-[#17351f]" : "border-[#ff9aa8]/30 bg-[#3a1f26]"
       }`}
       role="status"
       aria-live="polite"
@@ -546,7 +547,10 @@ function DueTimeline({
       <h3 className="text-sm font-semibold text-[#f8f9fb]">Review timeline</h3>
       <div className="mt-3 space-y-2">
         {buckets.map((bucket) => (
-          <div key={bucket.id} className="flex items-center justify-between gap-3 rounded-xl bg-[#202329] p-3">
+          <div
+            key={bucket.id}
+            className="flex items-center justify-between gap-3 rounded-xl bg-[#202329] p-3"
+          >
             <div className="min-w-0">
               <p className="text-sm font-semibold text-[#f8f9fb]">{bucket.label}</p>
               <p className="mt-1 truncate text-xs text-[#9aa0a6]">
@@ -585,7 +589,7 @@ function MultipleChoiceAnswers({
   answerType: ReviewCardType;
   japaneseChoiceScript: "kanji" | "hiragana";
   onJapaneseChoiceScriptChange(value: "kanji" | "hiragana"): void;
-  onChoose(value: string): void;
+  onChoose(option: MultipleChoiceOption): void;
 }) {
   const isJapaneseAnswer = answerType === "en_to_jp";
 
@@ -615,7 +619,7 @@ function MultipleChoiceAnswers({
           <button
             key={option.id}
             type="button"
-            onClick={() => onChoose(option.value)}
+            onClick={() => onChoose(option)}
             lang={answerType === "en_to_jp" ? "ja" : "en"}
             className="min-h-14 rounded-2xl border border-[#30343b] bg-[#202329] px-4 py-3 text-left text-lg font-semibold leading-snug text-[#f8f9fb] outline-none transition hover:border-[#8ab4f8] hover:bg-[#26354a] focus:ring-4 focus:ring-[#8ab4f8]/25 active:scale-[0.99] motion-reduce:transition-none"
           >
@@ -698,12 +702,15 @@ function AnswerInput({
           <button
             type="button"
             onClick={onRecord}
-            className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#2b2f36] text-[#a8c7fa] outline-none transition active:scale-95 focus:ring-4 focus:ring-[#a8c7fa]/25 data-[recording=true]:bg-[#ffb1c0] data-[recording=true]:text-[#3a1f26] motion-reduce:transition-none"
+            className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#2b2f36] text-[#a8c7fa] outline-none transition focus:ring-4 focus:ring-[#a8c7fa]/25 active:scale-95 data-[recording=true]:bg-[#ffb1c0] data-[recording=true]:text-[#3a1f26] motion-reduce:transition-none"
             data-recording={isRecording}
             aria-label={isRecording ? "Stop recording answer" : "Record answer"}
           >
             {isRecording ? (
-              <LoaderCircle className="h-6 w-6 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              <LoaderCircle
+                className="h-6 w-6 animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
+              />
             ) : (
               <Mic className="h-6 w-6" aria-hidden="true" />
             )}
@@ -727,7 +734,10 @@ function YourAnswer({ answer, type }: { answer: string; type: ReviewCardType }) 
   return (
     <div className="rounded-[1.5rem] bg-[#101113] p-4">
       <p className="text-sm font-semibold text-[#bdc1c6]">Your answer</p>
-      <p lang={type === "en_to_jp" ? "ja" : "en"} className="mt-2 text-2xl leading-snug text-[#f8f9fb]">
+      <p
+        lang={type === "en_to_jp" ? "ja" : "en"}
+        className="mt-2 text-2xl leading-snug text-[#f8f9fb]"
+      >
         {answer}
       </p>
     </div>
@@ -826,7 +836,9 @@ function FlashcardBack({
       )}
       <p className="mt-4 text-base text-[#f8f9fb]">{vocabularyCard.analysis.conciseMeaning}</p>
       <div className="mt-4 border-t border-[#2b2f36] pt-4">
-        <p className="text-sm leading-6 text-[#bdc1c6]">{vocabularyCard.analysis.grammarExplanation}</p>
+        <p className="text-sm leading-6 text-[#bdc1c6]">
+          {vocabularyCard.analysis.grammarExplanation}
+        </p>
         <ReadingReveal
           phrase={vocabularyCard.analysis.exampleSentence}
           reading={vocabularyCard.analysis.exampleSentenceReading}
@@ -880,9 +892,8 @@ function countByMastery(cards: LocalReviewCard[], masteryLevel: LocalReviewCard[
 }
 
 function countReviewCards(cards: LocalReviewCard[]) {
-  return cards.filter(
-    (card) => card.masteryLevel !== "new" && card.masteryLevel !== "learning",
-  ).length;
+  return cards.filter((card) => card.masteryLevel !== "new" && card.masteryLevel !== "learning")
+    .length;
 }
 
 function formatBucketExamples(
@@ -895,9 +906,10 @@ function formatBucketExamples(
 
   const examples = reviewCards
     .slice(0, 3)
-    .map((reviewCard) =>
-      vocabularyCards.find((card) => card.id === reviewCard.vocabularyCardId)?.analysis
-        .originalPhrase,
+    .map(
+      (reviewCard) =>
+        vocabularyCards.find((card) => card.id === reviewCard.vocabularyCardId)?.analysis
+          .originalPhrase,
     )
     .filter((phrase): phrase is string => Boolean(phrase));
 
@@ -943,10 +955,7 @@ function reinsertMissedCard(queue: string[], missCount: number) {
 
   const [minimumOffset, maximumOffset] =
     missCount >= 3 ? [2, 3] : missCount === 2 ? [3, 5] : [5, 7];
-  const insertionIndex = Math.min(
-    randomInteger(minimumOffset, maximumOffset),
-    remaining.length,
-  );
+  const insertionIndex = Math.min(randomInteger(minimumOffset, maximumOffset), remaining.length);
   const nextQueue = [...remaining];
   nextQueue.splice(insertionIndex, 0, missedCardId);
   return nextQueue;
@@ -963,7 +972,9 @@ function buildMultipleChoiceOptions(
   const optionKanaValue = (card: LocalVocabularyCard) =>
     reviewCard.type === "en_to_jp" ? card.analysis.readingKana : undefined;
   const correctValue = optionValue(vocabularyCard);
-  const currentTags = new Set(vocabularyCard.analysis.suggestedTags.map((tag) => tag.toLowerCase()));
+  const currentTags = new Set(
+    vocabularyCard.analysis.suggestedTags.map((tag) => tag.toLowerCase()),
+  );
   const rankedDeckCandidates = vocabularyCards
     .filter((card) => card.id !== vocabularyCard.id)
     .map((card) => ({
@@ -983,6 +994,7 @@ function buildMultipleChoiceOptions(
       id: card.id,
       value: optionValue(card),
       kanaValue: optionKanaValue(card),
+      isCorrect: false,
     }));
   const fallbackCandidates = [
     ...shuffle(beginnerDistractors.filter((item) => item.kind === answerKind)),
@@ -991,6 +1003,7 @@ function buildMultipleChoiceOptions(
     id: `fallback-${item.jp}-${item.en}`,
     value: reviewCard.type === "en_to_jp" ? item.jp : item.en,
     kanaValue: reviewCard.type === "en_to_jp" ? item.kana : undefined,
+    isCorrect: false,
   }));
   const distractors: MultipleChoiceOption[] = [];
   const seen = new Set([normalizeChoice(correctValue)]);
@@ -1009,6 +1022,7 @@ function buildMultipleChoiceOptions(
       id: `correct-${vocabularyCard.id}`,
       value: correctValue,
       kanaValue: optionKanaValue(vocabularyCard),
+      isCorrect: true,
     },
     ...distractors,
   ]);
@@ -1049,7 +1063,10 @@ function getVocabularyKind(card: LocalVocabularyCard): DistractorKind {
 }
 
 function normalizeChoice(value: string) {
-  return value.normalize("NFKC").toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]/gu, "");
 }
 
 function shuffle<T>(items: T[]) {
@@ -1141,7 +1158,7 @@ function normalizeEnglishWords(value: string) {
     .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
     .map(stemEnglishWord)
-    .filter((word) => word.length > 2 && !englishStopWords.has(word));
+    .filter((word) => word.length > 1 && !englishStopWords.has(word));
 }
 
 function hasEnglishMeaningOverlap(answer: string, acceptedAnswers: string[]) {
