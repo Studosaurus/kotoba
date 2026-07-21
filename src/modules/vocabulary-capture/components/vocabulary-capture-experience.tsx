@@ -383,6 +383,23 @@ export function VocabularyCaptureExperience() {
     return reviewedCard;
   };
 
+  const retryCardDetails = async (cardId: string) => {
+    const card = deck.vocabularyCards.find((item) => item.id === cardId);
+
+    if (!card) {
+      return "Could not find this saved word.";
+    }
+
+    const result = await enrichVocabularyAnalysisSafely(card.analysis);
+
+    if (!result.ok) {
+      return result.error;
+    }
+
+    updateSavedCardAnalysis(cardId, result.analysis);
+    return undefined;
+  };
+
   const recoverAfterCaptureTeardown = async (
     stopRecorderPromise: Promise<LocalAudioClip | null>,
   ) => {
@@ -685,6 +702,7 @@ export function VocabularyCaptureExperience() {
             onDelete={deleteCard}
             onUpdateAudioClip={updateCardAudioClip}
             onUpdateSourceContext={updateCardSourceContext}
+            onRetryDetails={retryCardDetails}
             onStudy={() => changeActiveView("study")}
           />
         ) : null}

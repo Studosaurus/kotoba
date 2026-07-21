@@ -27,6 +27,7 @@ interface SavedCardsViewProps {
   onDelete(cardId: string): void;
   onUpdateAudioClip(cardId: string, audioClip: LocalAudioClip): void;
   onUpdateSourceContext(cardId: string, sourceContext: VocabularySourceContext | undefined): void;
+  onRetryDetails(cardId: string): Promise<string | undefined>;
   onStudy(): void;
 }
 
@@ -39,6 +40,7 @@ export function SavedCardsView({
   onDelete,
   onUpdateAudioClip,
   onUpdateSourceContext,
+  onRetryDetails,
   onStudy,
 }: SavedCardsViewProps) {
   const [query, setQuery] = useState("");
@@ -112,6 +114,7 @@ export function SavedCardsView({
           onUpdateSourceContext={(sourceContext) =>
             onUpdateSourceContext(selectedCard.id, sourceContext)
           }
+          onRetryDetails={() => onRetryDetails(selectedCard.id)}
         />
       </div>
     );
@@ -195,6 +198,9 @@ export function SavedCardsView({
                     <p className="mt-2 line-clamp-2 text-sm font-medium text-[#bdc1c6]">
                       {card.analysis.conciseMeaning || card.analysis.naturalTranslation}
                     </p>
+                    {needsVocabularyDetails(card) ? (
+                      <p className="mt-2 text-xs font-semibold text-[#f8c471]">Needs details</p>
+                    ) : null}
                     <MasteryProgressBar mastery={mastery} compact />
                   </button>
                   <button
@@ -370,6 +376,7 @@ function SavedCardDetail({
   onDelete,
   onUpdateAudioClip,
   onUpdateSourceContext,
+  onRetryDetails,
 }: {
   card: LocalVocabularyCard;
   reviewCards: LocalReviewCard[];
@@ -377,6 +384,7 @@ function SavedCardDetail({
   onDelete(cardId: string): void;
   onUpdateAudioClip(audioClip: LocalAudioClip): void;
   onUpdateSourceContext(sourceContext: VocabularySourceContext | undefined): void;
+  onRetryDetails(): Promise<string | undefined>;
 }) {
   const relatedReviewCards = reviewCards.filter(
     (reviewCard) => reviewCard.vocabularyCardId === card.id,
@@ -408,6 +416,8 @@ function SavedCardDetail({
           <Trash2 className="h-4 w-4" aria-hidden="true" />
         </button>
       </header>
+
+      {needsVocabularyDetails(card) ? <DetailsRepairCard onRetry={onRetryDetails} /> : null}
 
       <section className="rounded-[1.75rem] bg-[#17191d] p-5">
         <KanjiReadingText
@@ -465,6 +475,48 @@ function SavedCardDetail({
         />
       </DetailSection>
     </section>
+  );
+}
+
+function DetailsRepairCard({ onRetry }: { onRetry(): Promise<string | undefined> }) {
+  const [isRepairing, setIsRepairing] = useState(false);
+  const [error, setError] = useState<string>();
+
+  return (
+    <section className="rounded-[1.5rem] border border-[#f8c471]/30 bg-[#3b3020] p-4">
+      <p className="text-sm font-semibold text-[#f8f9fb]">This word is missing its full details.</p>
+      <p className="mt-1 text-sm leading-5 text-[#d7c8a5]">
+        Retry the example, grammar explanation, level, and tags.
+      </p>
+      <button
+        type="button"
+        disabled={isRepairing}
+        onClick={() => {
+          setIsRepairing(true);
+          setError(undefined);
+          void onRetry().then((nextError) => {
+            setError(nextError);
+            setIsRepairing(false);
+          });
+        }}
+        className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#f8c471] px-4 text-sm font-semibold text-[#382b00] outline-none focus:ring-4 focus:ring-[#f8c471]/25 disabled:opacity-60"
+      >
+        {isRepairing ? (
+          <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+        ) : null}
+        {isRepairing ? "Adding details" : "Retry details"}
+      </button>
+      {error ? <p className="mt-2 text-sm font-medium text-[#ffb1c0]">{error}</p> : null}
+    </section>
+  );
+}
+
+function needsVocabularyDetails(card: LocalVocabularyCard) {
+  return (
+    card.analysis.suggestedTags.includes("needs-details") ||
+    card.analysis.grammarExplanation.trim().toLowerCase() === "adding details..." ||
+    card.analysis.exampleSentenceTranslation.trim().toLowerCase() ===
+      "adding an example sentence..."
   );
 }
 

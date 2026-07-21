@@ -53,6 +53,11 @@ export function StudyQueueView({
   const [sessionQueue, setSessionQueue] = useState<string[]>([]);
   const [sessionMissCounts, setSessionMissCounts] = useState<Record<string, number>>({});
   const [sessionTotal, setSessionTotal] = useState(0);
+  const [sessionAttempts, setSessionAttempts] = useState(0);
+  const [sessionFirstAttemptCorrect, setSessionFirstAttemptCorrect] = useState(0);
+  const [sessionRecoveredCards, setSessionRecoveredCards] = useState(0);
+  const [sessionIncorrectAttempts, setSessionIncorrectAttempts] = useState(0);
+  const [sessionLevelUps, setSessionLevelUps] = useState(0);
   const [isRevealed, setIsRevealed] = useState(false);
   const [completedInSession, setCompletedInSession] = useState(0);
   const [showReading, setShowReading] = useState(false);
@@ -83,10 +88,7 @@ export function StudyQueueView({
     [activeReviewCard, activeVocabularyCard, usesMultipleChoice, vocabularyCards],
   );
 
-  if (
-    (!isSessionStarted && dueCards.length === 0) ||
-    (isSessionStarted && (!activeReviewCard || !activeVocabularyCard))
-  ) {
+  if (!isSessionStarted && dueCards.length === 0) {
     return (
       <section className="rounded-[1.5rem] bg-[#17191d] p-5 text-center">
         <CheckCircle2 className="mx-auto h-9 w-9 text-[#a8c7fa]" aria-hidden="true" />
@@ -126,6 +128,11 @@ export function StudyQueueView({
                 setSessionTotal(queue.length);
                 setCompletedInSession(0);
                 setSessionMissCounts({});
+                setSessionAttempts(0);
+                setSessionFirstAttemptCorrect(0);
+                setSessionRecoveredCards(0);
+                setSessionIncorrectAttempts(0);
+                setSessionLevelUps(0);
                 setIsSessionStarted(true);
               }}
               className="min-h-11 shrink-0 rounded-full bg-[#a8c7fa] px-4 text-sm font-semibold text-[#062e6f] outline-none focus:ring-4 focus:ring-[#a8c7fa]/30"
@@ -142,6 +149,20 @@ export function StudyQueueView({
         <MasterySummary distribution={masteryDistribution} />
         <DueTimeline buckets={timelineBuckets} vocabularyCards={vocabularyCards} />
       </section>
+    );
+  }
+
+  if (isSessionStarted && (!activeReviewCard || !activeVocabularyCard)) {
+    return (
+      <StudySessionSummary
+        completed={completedInSession}
+        attempts={sessionAttempts}
+        firstAttemptCorrect={sessionFirstAttemptCorrect}
+        recoveredCards={sessionRecoveredCards}
+        incorrectAttempts={sessionIncorrectAttempts}
+        levelUps={sessionLevelUps}
+        onCapture={onCapture}
+      />
     );
   }
 
@@ -337,6 +358,7 @@ export function StudyQueueView({
           <button
             type="button"
             onClick={() => {
+              const priorMisses = sessionMissCounts[activeReviewCard.id] ?? 0;
               const reviewedCard = onReview(
                 activeReviewCard.id,
                 answerResult?.isCorrect ? "good" : "again",
@@ -351,11 +373,19 @@ export function StudyQueueView({
                   phrase: activeVocabularyCard.analysis.originalPhrase,
                   nextMastery: reviewedCard.masteryLevel,
                 });
+                setSessionLevelUps((count) => count + 1);
               } else {
                 setLevelUpEvent(null);
               }
 
+              setSessionAttempts((count) => count + 1);
+
               if (answerResult?.isCorrect) {
+                if (priorMisses === 0) {
+                  setSessionFirstAttemptCorrect((count) => count + 1);
+                } else {
+                  setSessionRecoveredCards((count) => count + 1);
+                }
                 setCompletedInSession((count) => count + 1);
                 setSessionQueue((queue) => queue.slice(1));
                 setSessionMissCounts((counts) => {
@@ -364,6 +394,7 @@ export function StudyQueueView({
                   return nextCounts;
                 });
               } else {
+                setSessionIncorrectAttempts((count) => count + 1);
                 const nextMissCount = (sessionMissCounts[activeReviewCard.id] ?? 0) + 1;
                 setSessionMissCounts((counts) => ({
                   ...counts,
@@ -385,6 +416,67 @@ export function StudyQueueView({
         </div>
       )}
     </section>
+  );
+}
+
+function StudySessionSummary({
+  completed,
+  attempts,
+  firstAttemptCorrect,
+  recoveredCards,
+  incorrectAttempts,
+  levelUps,
+  onCapture,
+}: {
+  completed: number;
+  attempts: number;
+  firstAttemptCorrect: number;
+  recoveredCards: number;
+  incorrectAttempts: number;
+  levelUps: number;
+  onCapture(): void;
+}) {
+  const firstAttemptAccuracy =
+    completed > 0 ? Math.round((firstAttemptCorrect / completed) * 100) : 0;
+
+  return (
+    <section className="space-y-4">
+      <div className="rounded-[1.5rem] border border-[#9be7a8]/25 bg-[#17351f] p-5 text-center">
+        <CheckCircle2 className="mx-auto h-10 w-10 text-[#9be7a8]" aria-hidden="true" />
+        <p className="mt-3 text-sm font-bold uppercase tracking-wide text-[#9be7a8]">
+          Session complete
+        </p>
+        <h2 className="mt-2 text-3xl font-semibold text-[#f8f9fb]">{completed} cards reviewed</h2>
+        <p className="mt-2 text-sm text-[#c7ddcb]">Nothing else is due right now.</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <SessionSummaryStat label="First try" value={`${firstAttemptAccuracy}%`} />
+        <SessionSummaryStat label="Recovered" value={recoveredCards.toString()} />
+        <SessionSummaryStat label="Misses" value={incorrectAttempts.toString()} />
+        <SessionSummaryStat label="Level ups" value={levelUps.toString()} />
+      </div>
+
+      <p className="text-center text-xs font-medium text-[#9aa0a6]">
+        {attempts} total answer{attempts === 1 ? "" : "s"}
+      </p>
+      <button
+        type="button"
+        onClick={onCapture}
+        className="h-14 w-full rounded-full bg-[#a8c7fa] text-base font-semibold text-[#062e6f] outline-none focus:ring-4 focus:ring-[#a8c7fa]/30"
+      >
+        Back to capture
+      </button>
+    </section>
+  );
+}
+
+function SessionSummaryStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[1.25rem] bg-[#17191d] p-4 text-center">
+      <p className="text-2xl font-semibold text-[#f8f9fb]">{value}</p>
+      <p className="mt-1 text-xs font-semibold uppercase text-[#9aa0a6]">{label}</p>
+    </div>
   );
 }
 
