@@ -36,6 +36,11 @@ interface LevelUpEvent {
   nextMastery: LocalReviewCard["masteryLevel"];
 }
 
+interface MultipleChoiceOption {
+  id: string;
+  value: string;
+}
+
 export function StudyQueueView({
   vocabularyCards,
   reviewCards,
@@ -44,8 +49,10 @@ export function StudyQueueView({
 }: StudyQueueViewProps) {
   const dueCards = useMemo(() => getDueReviewCards(reviewCards), [reviewCards]);
   const [isSessionStarted, setIsSessionStarted] = useState(false);
+  const [sessionQueue, setSessionQueue] = useState<string[]>([]);
+  const [sessionTotal, setSessionTotal] = useState(0);
   const [isRevealed, setIsRevealed] = useState(false);
-  const [reviewedInSession, setReviewedInSession] = useState(0);
+  const [completedInSession, setCompletedInSession] = useState(0);
   const [showReading, setShowReading] = useState(false);
   const [answer, setAnswer] = useState("");
   const [answerError, setAnswerError] = useState<string>();
@@ -56,13 +63,26 @@ export function StudyQueueView({
   const transcriptRef = useRef("");
   const hasFinalizedSpeechRef = useRef(false);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const activeReviewCard = dueCards[0];
+  const activeReviewCard = reviewCards.find((card) => card.id === sessionQueue[0]);
   const activeVocabularyCard = activeReviewCard
     ? vocabularyCards.find((card) => card.id === activeReviewCard.vocabularyCardId)
     : undefined;
-  const totalInSession = reviewedInSession + dueCards.length;
+  const usesMultipleChoice = Boolean(
+    activeReviewCard &&
+      (activeReviewCard.masteryLevel === "new" || activeReviewCard.masteryLevel === "learning"),
+  );
+  const multipleChoiceOptions = useMemo(
+    () =>
+      activeReviewCard && activeVocabularyCard && usesMultipleChoice
+        ? buildMultipleChoiceOptions(activeReviewCard, activeVocabularyCard, vocabularyCards)
+        : [],
+    [activeReviewCard, activeVocabularyCard, usesMultipleChoice, vocabularyCards],
+  );
 
-  if (!activeReviewCard || !activeVocabularyCard) {
+  if (
+    (!isSessionStarted && dueCards.length === 0) ||
+    (isSessionStarted && (!activeReviewCard || !activeVocabularyCard))
+  ) {
     return (
       <section className="rounded-[1.5rem] bg-[#17191d] p-5 text-center">
         <CheckCircle2 className="mx-auto h-9 w-9 text-[#a8c7fa]" aria-hidden="true" />
@@ -96,7 +116,13 @@ export function StudyQueueView({
             </div>
             <button
               type="button"
-              onClick={() => setIsSessionStarted(true)}
+              onClick={() => {
+                const queue = buildSessionQueue(dueCards);
+                setSessionQueue(queue);
+                setSessionTotal(queue.length);
+                setCompletedInSession(0);
+                setIsSessionStarted(true);
+              }}
               className="min-h-11 shrink-0 rounded-full bg-[#a8c7fa] px-4 text-sm font-semibold text-[#062e6f] outline-none focus:ring-4 focus:ring-[#a8c7fa]/30"
             >
               Start
@@ -114,7 +140,11 @@ export function StudyQueueView({
     );
   }
 
-  const progress = totalInSession === 0 ? 0 : reviewedInSession / totalInSession;
+  if (!activeReviewCard || !activeVocabularyCard) {
+    return null;
+  }
+
+  const progress = sessionTotal === 0 ? 0 : completedInSession / sessionTotal;
   const revealAnswer = () => {
     if (!answer.trim()) {
       setAnswerError("Enter or speak your answer first.");
@@ -246,7 +276,7 @@ export function StudyQueueView({
         <div className="flex items-center justify-between gap-3 text-sm font-semibold">
           <span className="text-[#a8c7fa]">{getCardTypeLabel(activeReviewCard.type)}</span>
           <span className="text-[#bdc1c6]">
-            {reviewedInSession + 1} / {totalInSession}
+            {Math.min(completedInSession + 1, sessionTotal)} / {sessionTotal}
           </span>
         </div>
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#2b2f36]">
@@ -266,7 +296,19 @@ export function StudyQueueView({
         onToggleReading={() => setShowReading((value) => !value)}
       />
 
-      {!isRevealed ? (
+      {!isRevealed && usesMultipleChoice && multipleChoiceOptions.length === 4 ? (
+        <MultipleChoiceAnswers
+          options={multipleChoiceOptions}
+          answerType={activeReviewCard.type}
+          onChoose={(selectedAnswer) => {
+            setAnswer(selectedAnswer);
+            setAnswerResult(checkAnswer(activeReviewCard, activeVocabularyCard, selectedAnswer));
+            setAnswerError(undefined);
+            setLevelUpEvent(null);
+            setIsRevealed(true);
+          }}
+        />
+      ) : !isRevealed ? (
         <AnswerInput
           value={answer}
           error={answerError}
@@ -307,7 +349,12 @@ export function StudyQueueView({
                 setLevelUpEvent(null);
               }
 
-              setReviewedInSession((count) => count + 1);
+              if (answerResult?.isCorrect) {
+                setCompletedInSession((count) => count + 1);
+                setSessionQueue((queue) => queue.slice(1));
+              } else {
+                setSessionQueue((queue) => reinsertMissedCard(queue));
+              }
               setIsRevealed(false);
               setShowReading(false);
               setAnswer("");
@@ -414,6 +461,35 @@ function LevelUpCard({ event }: { event: LevelUpEvent }) {
       <p className="mt-2 text-base font-semibold text-[#f8f9fb]">
         <span lang="ja">{event.phrase}</span> is now {formatMastery(event.nextMastery)}
       </p>
+    </section>
+  );
+}
+
+function MultipleChoiceAnswers({
+  options,
+  answerType,
+  onChoose,
+}: {
+  options: MultipleChoiceOption[];
+  answerType: ReviewCardType;
+  onChoose(value: string): void;
+}) {
+  return (
+    <section className="rounded-[1.5rem] bg-[#17191d] p-4">
+      <p className="text-sm font-semibold text-[#bdc1c6]">Choose the best answer</p>
+      <div className="mt-3 grid gap-2">
+        {options.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => onChoose(option.value)}
+            lang={answerType === "en_to_jp" ? "ja" : "en"}
+            className="min-h-14 rounded-2xl border border-[#30343b] bg-[#202329] px-4 py-3 text-left text-lg font-semibold leading-snug text-[#f8f9fb] outline-none transition hover:border-[#8ab4f8] hover:bg-[#26354a] focus:ring-4 focus:ring-[#8ab4f8]/25 active:scale-[0.99] motion-reduce:transition-none"
+          >
+            {option.value}
+          </button>
+        ))}
+      </div>
     </section>
   );
 }
@@ -703,6 +779,151 @@ function getCardTypeLabel(type: ReviewCardType) {
   return type === "jp_to_en" ? "Japanese to English" : "English to Japanese";
 }
 
+function buildSessionQueue(cards: LocalReviewCard[]) {
+  const remaining = shuffle(cards);
+  const ordered: LocalReviewCard[] = [];
+
+  while (remaining.length > 0) {
+    const recentVocabularyIds = new Set(ordered.slice(-2).map((card) => card.vocabularyCardId));
+    let nextIndex = remaining.findIndex((card) => !recentVocabularyIds.has(card.vocabularyCardId));
+
+    if (nextIndex < 0) {
+      nextIndex = remaining.findIndex(
+        (card) => card.vocabularyCardId !== ordered.at(-1)?.vocabularyCardId,
+      );
+    }
+
+    const [nextCard] = remaining.splice(Math.max(0, nextIndex), 1);
+    if (nextCard) ordered.push(nextCard);
+  }
+
+  return ordered.map((card) => card.id);
+}
+
+function reinsertMissedCard(queue: string[]) {
+  const [missedCardId, ...remaining] = queue;
+  if (!missedCardId) return remaining;
+
+  const insertionIndex = Math.min(randomInteger(3, 8), remaining.length);
+  const nextQueue = [...remaining];
+  nextQueue.splice(insertionIndex, 0, missedCardId);
+  return nextQueue;
+}
+
+function buildMultipleChoiceOptions(
+  reviewCard: LocalReviewCard,
+  vocabularyCard: LocalVocabularyCard,
+  vocabularyCards: LocalVocabularyCard[],
+): MultipleChoiceOption[] {
+  const answerKind = getVocabularyKind(vocabularyCard);
+  const optionValue = (card: LocalVocabularyCard) =>
+    reviewCard.type === "en_to_jp" ? getJapaneseAnswer(card) : getShortEnglishAnswer(card);
+  const correctValue = optionValue(vocabularyCard);
+  const currentTags = new Set(vocabularyCard.analysis.suggestedTags.map((tag) => tag.toLowerCase()));
+  const rankedDeckCandidates = vocabularyCards
+    .filter((card) => card.id !== vocabularyCard.id)
+    .map((card) => ({
+      card,
+      kindMatch: getVocabularyKind(card) === answerKind ? 1 : 0,
+      tagMatches: card.analysis.suggestedTags.filter((tag) => currentTags.has(tag.toLowerCase()))
+        .length,
+      random: Math.random(),
+    }))
+    .sort(
+      (first, second) =>
+        second.kindMatch - first.kindMatch ||
+        second.tagMatches - first.tagMatches ||
+        first.random - second.random,
+    )
+    .map(({ card }) => ({ id: card.id, value: optionValue(card) }));
+  const fallbackCandidates = [
+    ...shuffle(beginnerDistractors.filter((item) => item.kind === answerKind)),
+    ...shuffle(beginnerDistractors.filter((item) => item.kind !== answerKind)),
+  ].map((item) => ({
+    id: `fallback-${item.jp}-${item.en}`,
+    value: reviewCard.type === "en_to_jp" ? item.jp : item.en,
+  }));
+  const distractors: MultipleChoiceOption[] = [];
+  const seen = new Set([normalizeChoice(correctValue)]);
+
+  for (const candidate of [...rankedDeckCandidates, ...fallbackCandidates]) {
+    const normalizedValue = normalizeChoice(candidate.value);
+    if (!normalizedValue || seen.has(normalizedValue)) continue;
+
+    seen.add(normalizedValue);
+    distractors.push(candidate);
+    if (distractors.length === 3) break;
+  }
+
+  return shuffle([{ id: `correct-${vocabularyCard.id}`, value: correctValue }, ...distractors]);
+}
+
+function getJapaneseAnswer(card: LocalVocabularyCard) {
+  return card.analysis.normalizedForm || card.analysis.originalPhrase;
+}
+
+function getShortEnglishAnswer(card: LocalVocabularyCard) {
+  const alternatives = splitEnglishAlternatives(
+    card.analysis.conciseMeaning || card.analysis.naturalTranslation,
+  );
+  return alternatives[0] || card.analysis.naturalTranslation;
+}
+
+function getVocabularyKind(card: LocalVocabularyCard): DistractorKind {
+  const metadata = [card.analysis.suggestedTags.join(" "), card.analysis.conciseMeaning]
+    .join(" ")
+    .toLowerCase();
+
+  if (/verb|動詞/.test(metadata)) return "verb";
+  if (/adjective|形容詞/.test(metadata)) return "adjective";
+  if (/adverb|副詞/.test(metadata)) return "adverb";
+  return "noun";
+}
+
+function normalizeChoice(value: string) {
+  return value.normalize("NFKC").toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
+}
+
+function shuffle<T>(items: T[]) {
+  const result = [...items];
+
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const swapIndex = randomInteger(0, index);
+    [result[index], result[swapIndex]] = [result[swapIndex] as T, result[index] as T];
+  }
+
+  return result;
+}
+
+function randomInteger(minimum: number, maximum: number) {
+  return Math.floor(Math.random() * (maximum - minimum + 1)) + minimum;
+}
+
+type DistractorKind = "verb" | "noun" | "adjective" | "adverb";
+
+const beginnerDistractors: Array<{ jp: string; en: string; kind: DistractorKind }> = [
+  { jp: "食べる", en: "eat", kind: "verb" },
+  { jp: "飲む", en: "drink", kind: "verb" },
+  { jp: "行く", en: "go", kind: "verb" },
+  { jp: "見る", en: "see", kind: "verb" },
+  { jp: "聞く", en: "listen", kind: "verb" },
+  { jp: "話す", en: "speak", kind: "verb" },
+  { jp: "読む", en: "read", kind: "verb" },
+  { jp: "書く", en: "write", kind: "verb" },
+  { jp: "時間", en: "time", kind: "noun" },
+  { jp: "場所", en: "place", kind: "noun" },
+  { jp: "仕事", en: "work", kind: "noun" },
+  { jp: "友達", en: "friend", kind: "noun" },
+  { jp: "大きい", en: "big", kind: "adjective" },
+  { jp: "小さい", en: "small", kind: "adjective" },
+  { jp: "新しい", en: "new", kind: "adjective" },
+  { jp: "難しい", en: "difficult", kind: "adjective" },
+  { jp: "いつも", en: "always", kind: "adverb" },
+  { jp: "ときどき", en: "sometimes", kind: "adverb" },
+  { jp: "ゆっくり", en: "slowly", kind: "adverb" },
+  { jp: "すぐ", en: "immediately", kind: "adverb" },
+];
+
 function checkAnswer(
   reviewCard: LocalReviewCard,
   vocabularyCard: LocalVocabularyCard,
@@ -746,26 +967,87 @@ function normalizeEnglishWords(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
+    .map(stemEnglishWord)
     .filter((word) => word.length > 2 && !englishStopWords.has(word));
 }
 
 function hasEnglishMeaningOverlap(answer: string, acceptedAnswers: string[]) {
-  const answerWords = new Set(normalizeEnglishWords(answer));
+  const normalizedAnswer = normalizeEnglishWords(answer);
+  const answerWords = new Set(normalizedAnswer);
 
   if (answerWords.size === 0) {
     return false;
   }
 
-  return acceptedAnswers.some((acceptedAnswer) => {
+  return acceptedAnswers.flatMap(splitEnglishAlternatives).some((acceptedAnswer) => {
     const acceptedWords = normalizeEnglishWords(acceptedAnswer);
 
     if (acceptedWords.length === 0) {
       return false;
     }
 
+    if (
+      acceptedWords.length === 1 &&
+      normalizedAnswer.length === 1 &&
+      areCloseEnglishWords(normalizedAnswer[0] ?? "", acceptedWords[0] ?? "")
+    ) {
+      return true;
+    }
+
     const matches = acceptedWords.filter((word) => answerWords.has(word)).length;
     return matches >= Math.min(2, acceptedWords.length);
   });
+}
+
+function splitEnglishAlternatives(value: string) {
+  return value
+    .replace(/\([^)]*\)/g, " ")
+    .split(/\s*(?:;|\/|\||,|\bor\b)\s*/i)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function stemEnglishWord(word: string) {
+  if (word.length > 5 && word.endsWith("ing")) return word.slice(0, -3);
+  if (word.length > 4 && word.endsWith("ed")) return word.slice(0, -2);
+  if (word.length > 4 && word.endsWith("es")) return word.slice(0, -2);
+  if (word.length > 3 && word.endsWith("s")) return word.slice(0, -1);
+  return word;
+}
+
+function areCloseEnglishWords(first: string, second: string) {
+  if (first === second) return true;
+  if (first.length < 5 || second.length < 5 || Math.abs(first.length - second.length) > 1) {
+    return false;
+  }
+
+  return editDistanceWithinOne(first, second);
+}
+
+function editDistanceWithinOne(first: string, second: string) {
+  let firstIndex = 0;
+  let secondIndex = 0;
+  let edits = 0;
+
+  while (firstIndex < first.length && secondIndex < second.length) {
+    if (first[firstIndex] === second[secondIndex]) {
+      firstIndex += 1;
+      secondIndex += 1;
+      continue;
+    }
+
+    edits += 1;
+    if (edits > 1) return false;
+
+    if (first.length > second.length) firstIndex += 1;
+    else if (second.length > first.length) secondIndex += 1;
+    else {
+      firstIndex += 1;
+      secondIndex += 1;
+    }
+  }
+
+  return edits + (firstIndex < first.length || secondIndex < second.length ? 1 : 0) <= 1;
 }
 
 const englishStopWords = new Set([
