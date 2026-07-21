@@ -9,7 +9,6 @@ import {
   formatReviewCardType,
   getDueCountForVocabulary,
   getMasteryProgress,
-  getMasteryDistribution,
   getNextDueCardForVocabulary,
   getVocabularyMastery,
 } from "../local/local-study-scheduler";
@@ -17,6 +16,7 @@ import type {
   LocalAudioClip,
   LocalReviewCard,
   LocalVocabularyCard,
+  MasteryLevel,
 } from "../local/local-vocabulary-types";
 import type { VocabularySourceContext } from "../types";
 
@@ -30,6 +30,8 @@ interface SavedCardsViewProps {
   onStudy(): void;
 }
 
+const masteryLevels: MasteryLevel[] = ["new", "learning", "familiar", "strong", "mastered"];
+
 export function SavedCardsView({
   vocabularyCards,
   reviewCards,
@@ -40,6 +42,7 @@ export function SavedCardsView({
   onStudy,
 }: SavedCardsViewProps) {
   const [query, setQuery] = useState("");
+  const [masteryFilter, setMasteryFilter] = useState<MasteryLevel>("new");
   const [selectedCardId, setSelectedCardId] = useState<string | undefined>(initialSelectedCardId);
   const rootRef = useRef<HTMLElement | null>(null);
   const listScrollPositionRef = useRef(0);
@@ -48,12 +51,15 @@ export function SavedCardsView({
     : undefined;
   const filteredCards = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
+    const cardsInMastery = vocabularyCards.filter(
+      (card) => getVocabularyMastery(card, reviewCards) === masteryFilter,
+    );
 
     if (!normalizedQuery) {
-      return vocabularyCards;
+      return cardsInMastery;
     }
 
-    return vocabularyCards.filter((card) => {
+    return cardsInMastery.filter((card) => {
       const searchable = [
         card.analysis.originalPhrase,
         card.analysis.readingKana,
@@ -66,8 +72,12 @@ export function SavedCardsView({
 
       return searchable.includes(normalizedQuery);
     });
-  }, [vocabularyCards, query]);
-  const masteryDistribution = getMasteryDistribution(reviewCards);
+  }, [masteryFilter, query, reviewCards, vocabularyCards]);
+  const masteryDistribution = masteryLevels.map((level) => ({
+    level,
+    count: vocabularyCards.filter((card) => getVocabularyMastery(card, reviewCards) === level)
+      .length,
+  }));
 
   const getScrollContainer = () =>
     rootRef.current?.closest<HTMLElement>("[data-vocabulary-scroll-container]") ?? null;
@@ -137,19 +147,30 @@ export function SavedCardsView({
         </label>
         <div className="mt-4 grid grid-cols-5 gap-2">
           {masteryDistribution.map((item) => (
-            <div key={item.level} className="rounded-xl bg-[#202329] px-2 py-2 text-center">
+            <button
+              key={item.level}
+              type="button"
+              onClick={() => setMasteryFilter(item.level)}
+              aria-pressed={masteryFilter === item.level}
+              className="rounded-xl bg-[#202329] px-2 py-2 text-center outline-none transition focus:ring-4 focus:ring-[#8ab4f8]/20 data-[active=true]:bg-[#163154] data-[active=true]:ring-1 data-[active=true]:ring-[#8ab4f8]/50 motion-reduce:transition-none"
+              data-active={masteryFilter === item.level}
+            >
               <p className="text-sm font-semibold text-[#f8f9fb]">{item.count}</p>
-              <p className="truncate text-[10px] font-semibold uppercase text-[#9aa0a6]">
+              <p
+                className={`truncate text-[10px] font-semibold uppercase ${
+                  masteryFilter === item.level ? "text-[#a8c7fa]" : "text-[#9aa0a6]"
+                }`}
+              >
                 {formatMastery(item.level)}
               </p>
-            </div>
+            </button>
           ))}
         </div>
       </div>
 
       {filteredCards.length === 0 ? (
         <div className="rounded-[1.5rem] bg-[#17191d] p-5 text-sm text-[#bdc1c6]">
-          No saved cards yet.
+          No {formatMastery(masteryFilter).toLowerCase()} words match this view.
         </div>
       ) : (
         <div className="space-y-3">
