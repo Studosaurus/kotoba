@@ -4,7 +4,7 @@
 
 :root {
   --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 * {
@@ -13,14 +13,14 @@
 
 html {
   min-height: 100%;
-  background: #faf9f6;
+  background: #202124;
 }
 
 body {
   min-height: 100%;
   margin: 0;
-  background: #faf9f6;
-  color: #111111;
+  background: #202124;
+  color: #f8f9fb;
 }
 
 a {
@@ -87,23 +87,23 @@ a {
 }
 
 .kotoba-screen-enter {
-  animation: kotoba-screen-enter 180ms ease-out both;
+  animation: kotoba-screen-enter 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .kotoba-screen-forward {
-  animation: kotoba-screen-forward 180ms ease-out both;
+  animation: kotoba-screen-forward 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .kotoba-screen-back {
-  animation: kotoba-screen-back 160ms ease-out both;
+  animation: kotoba-screen-back 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .kotoba-player-expand {
-  animation: kotoba-player-expand 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: kotoba-player-expand 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .kotoba-player-collapse {
-  animation: kotoba-player-collapse 180ms ease-in both;
+  animation: kotoba-player-collapse 200ms cubic-bezier(0.4, 0, 1, 1) both;
   pointer-events: none;
 }
 

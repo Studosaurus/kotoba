@@ -44,7 +44,7 @@ export function GlobalMiniPlayer() {
       setIsClosing(false);
       closeTimerRef.current = null;
       navigate();
-    }, 180);
+    }, 200);
   };
 
   return (
