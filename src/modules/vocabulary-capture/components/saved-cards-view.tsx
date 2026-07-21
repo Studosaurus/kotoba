@@ -131,6 +131,7 @@ export function SavedCardsView({
         <div className="space-y-3">
           {filteredCards.map((card) => {
             const mastery = getVocabularyMastery(card, reviewCards);
+            const displayWord = getSavedListDisplayWord(card);
 
             return (
               <article key={card.id} className="rounded-[1.25rem] bg-[#17191d] p-3">
@@ -141,13 +142,13 @@ export function SavedCardsView({
                     className="min-w-0 flex-1 text-left outline-none focus:ring-4 focus:ring-[#8ab4f8]/20"
                   >
                     <p lang="ja" className="text-xl font-medium leading-snug text-[#f8f9fb]">
-                      {card.analysis.originalPhrase}
+                      {displayWord}
                     </p>
-                    <p className="mt-1 line-clamp-2 text-sm font-medium text-[#a8c7fa]">
+                    <p lang="ja" className="mt-0.5 text-sm font-medium text-[#a8c7fa]">
+                      {card.analysis.readingKana}
+                    </p>
+                    <p className="mt-2 line-clamp-2 text-sm font-medium text-[#bdc1c6]">
                       {card.analysis.conciseMeaning || card.analysis.naturalTranslation}
-                    </p>
-                    <p lang="ja" className="mt-2 line-clamp-2 text-sm leading-5 text-[#bdc1c6]">
-                      {card.analysis.exampleSentence}
                     </p>
                     <MasteryProgressBar mastery={mastery} compact />
                   </button>
@@ -167,6 +168,21 @@ export function SavedCardsView({
       )}
     </section>
   );
+}
+
+function getSavedListDisplayWord(card: LocalVocabularyCard) {
+  const { normalizedForm, originalPhrase } = card.analysis;
+  const containsKanji = (value: string) => /\p{Script=Han}/u.test(value);
+
+  if (containsKanji(normalizedForm)) {
+    return normalizedForm;
+  }
+
+  if (containsKanji(originalPhrase)) {
+    return originalPhrase;
+  }
+
+  return normalizedForm || originalPhrase;
 }
 
 function SavedAudioClip({
