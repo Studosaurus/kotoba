@@ -21,7 +21,7 @@ export function GlobalMiniPlayer() {
             initialView="player"
             onCollapse={() => {
               setExpanded(false);
-              router.push("/modules/vocabulary-capture");
+              router.replace("/modules/vocabulary-capture");
             }}
             onBrowseShows={() => {
               setExpanded(false);
@@ -29,7 +29,9 @@ export function GlobalMiniPlayer() {
             }}
             onOpenCurrentShow={() => {
               setExpanded(false);
-              router.push(`/modules/media?podcast=${encodeURIComponent(playback?.podcastId ?? "")}`);
+              router.push(
+                `/modules/media?podcast=${encodeURIComponent(playback?.podcastId ?? "")}`,
+              );
             }}
           />
         </div>
@@ -69,7 +71,9 @@ export function GlobalMiniPlayer() {
                 onClick={() => setExpanded(true)}
                 className="min-w-0 flex-1 text-left outline-none focus:ring-4 focus:ring-[#8ab4f8]/20"
               >
-                <p className="truncate text-sm font-semibold">{playback?.episodeTitle ?? "Browse podcasts"}</p>
+                <p className="truncate text-sm font-semibold">
+                  {playback?.episodeTitle ?? "Browse podcasts"}
+                </p>
                 <p className="truncate text-xs text-[#bdc1c6]">
                   {playback
                     ? `${playback.podcastTitle} / ${formatTimestamp(playback.positionMs)}`
@@ -84,7 +88,9 @@ export function GlobalMiniPlayer() {
               >
                 <ChevronDown className="h-5 w-5 rotate-180 transition" />
               </button>
-              {playback ? <span className="text-xs text-[#9aa0a6]">{Math.round(progress * 100)}%</span> : null}
+              {playback ? (
+                <span className="text-xs text-[#9aa0a6]">{Math.round(progress * 100)}%</span>
+              ) : null}
             </div>
           </div>
         </div>

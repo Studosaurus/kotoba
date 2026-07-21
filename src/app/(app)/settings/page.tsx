@@ -1,14 +1,10 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import {
-  ConnectorSettingsLink,
-  LocalDataBackup,
-  PermissionSettings,
-} from "./local-data-backup";
+import { ConnectorSettingsLink, LocalDataBackup, PermissionSettings } from "./local-data-backup";
 
 export default function SettingsPage() {
   return (
-    <section className="fixed inset-0 z-50 overflow-y-auto bg-[#202124] px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] pt-[calc(1.25rem+env(safe-area-inset-top))] text-[#f8f9fb]">
+    <section className="kotoba-screen-enter fixed inset-0 z-50 overflow-y-auto bg-[#202124] px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] pt-[calc(1.25rem+env(safe-area-inset-top))] text-[#f8f9fb]">
       <div className="mx-auto max-w-xl space-y-4">
         <header className="flex items-center justify-between gap-3">
           <Link

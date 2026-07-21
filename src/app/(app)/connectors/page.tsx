@@ -15,7 +15,7 @@ export default async function ConnectorsPage({ searchParams }: ConnectorsPagePro
   const backHref = params?.from?.startsWith("/") ? params.from : "/modules/vocabulary-capture";
 
   return (
-    <section className="fixed inset-0 z-50 overflow-y-auto bg-[#202124] px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-[calc(1.25rem+env(safe-area-inset-top))] text-[#f8f9fb]">
+    <section className="kotoba-screen-enter fixed inset-0 z-50 overflow-y-auto bg-[#202124] px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-[calc(1.25rem+env(safe-area-inset-top))] text-[#f8f9fb]">
       <div className="mx-auto max-w-xl space-y-5">
         <header className="flex items-center justify-between">
           <Link

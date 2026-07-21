@@ -2,7 +2,7 @@
 
 import { ArrowLeft, LoaderCircle, Mic, Search, Trash2, Volume2 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   formatDueLabel,
   formatMastery,
@@ -81,6 +81,12 @@ export function SavedCardsView({
       .length,
   }));
 
+  useEffect(() => {
+    if (initialSelectedCardId) {
+      void Promise.resolve().then(() => setSelectedCardId(initialSelectedCardId));
+    }
+  }, [initialSelectedCardId]);
+
   const getScrollContainer = () =>
     rootRef.current?.closest<HTMLElement>("[data-vocabulary-scroll-container]") ?? null;
 
@@ -101,7 +107,11 @@ export function SavedCardsView({
 
   if (selectedCard) {
     return (
-      <div ref={(node) => { rootRef.current = node; }}>
+      <div
+        ref={(node) => {
+          rootRef.current = node;
+        }}
+      >
         <SavedCardDetail
           card={selectedCard}
           reviewCards={reviewCards}
@@ -121,7 +131,12 @@ export function SavedCardsView({
   }
 
   return (
-    <section ref={(node) => { rootRef.current = node; }} className="space-y-4">
+    <section
+      ref={(node) => {
+        rootRef.current = node;
+      }}
+      className="space-y-4"
+    >
       <div className="rounded-[1.5rem] bg-[#17191d] p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -349,7 +364,10 @@ function SavedAudioClip({
           aria-label={isRecording ? "Stop replacement recording" : "Record replacement audio"}
         >
           {isRecording ? (
-            <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            <LoaderCircle
+              className="h-4 w-4 animate-spin motion-reduce:animate-none"
+              aria-hidden="true"
+            />
           ) : (
             <Mic className="h-4 w-4" aria-hidden="true" />
           )}
@@ -502,7 +520,10 @@ function DetailsRepairCard({ onRetry }: { onRetry(): Promise<string | undefined>
         className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#f8c471] px-4 text-sm font-semibold text-[#382b00] outline-none focus:ring-4 focus:ring-[#f8c471]/25 disabled:opacity-60"
       >
         {isRepairing ? (
-          <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+          <LoaderCircle
+            className="h-4 w-4 animate-spin motion-reduce:animate-none"
+            aria-hidden="true"
+          />
         ) : null}
         {isRepairing ? "Adding details" : "Retry details"}
       </button>
@@ -629,9 +650,7 @@ function SourceInput({
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-semibold uppercase tracking-wide text-[#9aa0a6]">
-        {label}
-      </span>
+      <span className="text-xs font-semibold uppercase tracking-wide text-[#9aa0a6]">{label}</span>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -685,8 +704,13 @@ function MasteryProgressBar({
           {progress.isComplete ? "Mastered" : `Next: ${formatMastery(progress.nextLevel)}`}
         </span>
       </div>
-      <div className={`${compact ? "mt-1.5 h-1.5" : "mt-2 h-2"} overflow-hidden rounded-full bg-[#2b2f36]`}>
-        <div className="h-full rounded-full bg-[#a8c7fa]" style={{ width: `${progress.percent}%` }} />
+      <div
+        className={`${compact ? "mt-1.5 h-1.5" : "mt-2 h-2"} overflow-hidden rounded-full bg-[#2b2f36]`}
+      >
+        <div
+          className="h-full rounded-full bg-[#a8c7fa]"
+          style={{ width: `${progress.percent}%` }}
+        />
       </div>
     </div>
   );
@@ -717,9 +741,9 @@ function formatDuration(durationMs: number) {
 function hasSourceContext(sourceContext?: VocabularySourceContext) {
   return Boolean(
     sourceContext?.sourceName?.trim() ||
-      sourceContext?.mediaItemTitle?.trim() ||
-      sourceContext?.timestampLabel?.trim() ||
-      sourceContext?.capturedAtLabel?.trim(),
+    sourceContext?.mediaItemTitle?.trim() ||
+    sourceContext?.timestampLabel?.trim() ||
+    sourceContext?.capturedAtLabel?.trim(),
   );
 }
 

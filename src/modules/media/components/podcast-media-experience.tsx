@@ -80,11 +80,12 @@ export function PodcastMediaExperience({
   const [mediaSettings, setMediaSettings] = useState(() => loadMediaUserSettings());
   const [statsVersion, setStatsVersion] = useState(0);
   const episodeScrollContainerRef = useRef<HTMLElement | null>(null);
+  const libraryScrollContainerRef = useRef<HTMLElement | null>(null);
   const episodeHeaderLastScrollTopRef = useRef(0);
   const episodeHeaderDirectionRef = useRef<"up" | "down">("up");
   const episodeHeaderTravelRef = useRef(0);
   const [isEpisodeHeaderVisible, setIsEpisodeHeaderVisible] = useState(true);
-  const hasConsumedInitialPodcastRef = useRef(false);
+  const lastRoutePodcastIdRef = useRef<string | undefined | null>(null);
   const playerHasPreviousView = view.name === "player" && Boolean(view.previous);
   const filteredPodcasts = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -259,7 +260,7 @@ export function PodcastMediaExperience({
     };
   }, []);
 
-  const openPodcast = async (podcast: PodcastSource) => {
+  const loadPodcast = async (podcast: PodcastSource) => {
     setView({ name: "podcast", podcast, isLoading: true });
 
     const result = await fetchPodcastFeed(podcast.feedUrl);
@@ -280,6 +281,27 @@ export function PodcastMediaExperience({
       setView({ name: "podcast", podcast: hydratedPodcast, feed: result.feed, isLoading: false });
     } else {
       setView({ name: "podcast", podcast, error: result.error, isLoading: false });
+    }
+  };
+
+  const openPodcast = (podcast: PodcastSource) => {
+    const scrollTop = libraryScrollContainerRef.current?.scrollTop ?? 0;
+    window.sessionStorage.setItem("kotoba:podcast-library-scroll", String(scrollTop));
+    window.sessionStorage.setItem("kotoba:podcast-opened-from-library", "true");
+    lastRoutePodcastIdRef.current = podcast.id;
+    router.push(`/modules/media?podcast=${encodeURIComponent(podcast.id)}`);
+    void loadPodcast(podcast);
+  };
+
+  const returnToLibrary = () => {
+    const openedFromLibrary =
+      window.sessionStorage.getItem("kotoba:podcast-opened-from-library") === "true";
+    window.sessionStorage.removeItem("kotoba:podcast-opened-from-library");
+
+    if (openedFromLibrary) {
+      router.back();
+    } else {
+      router.replace("/modules/media");
     }
   };
 
@@ -330,17 +352,28 @@ export function PodcastMediaExperience({
   }, [initialView, player.playback, podcasts, view.name, playerHasPreviousView]);
 
   useEffect(() => {
-    if (!initialPodcastId || hasConsumedInitialPodcastRef.current || view.name !== "library") {
+    if (initialPodcastId === lastRoutePodcastIdRef.current) {
+      return;
+    }
+
+    lastRoutePodcastIdRef.current = initialPodcastId;
+
+    if (!initialPodcastId) {
+      void Promise.resolve().then(() => setView({ name: "library" }));
+      window.requestAnimationFrame(() => {
+        const savedScrollTop = Number(
+          window.sessionStorage.getItem("kotoba:podcast-library-scroll") ?? 0,
+        );
+        libraryScrollContainerRef.current?.scrollTo({ top: savedScrollTop, behavior: "auto" });
+      });
       return;
     }
 
     const podcast = podcasts.find((item) => item.id === initialPodcastId);
-
     if (podcast) {
-      hasConsumedInitialPodcastRef.current = true;
-      void Promise.resolve().then(() => openPodcast(podcast));
+      void Promise.resolve().then(() => loadPodcast(podcast));
     }
-  }, [initialPodcastId, podcasts, view.name]);
+  }, [initialPodcastId, podcasts]);
 
   const addPodcast = async () => {
     const trimmedFeedUrl = feedUrl.trim();
@@ -378,7 +411,7 @@ export function PodcastMediaExperience({
     saveUserPodcast(podcast);
     setPodcasts(loadPodcastSources());
     setFeedUrl("");
-    setView({ name: "podcast", podcast, feed: result.feed, isLoading: false });
+    openPodcast(podcast);
   };
 
   const playEpisode = (episode: PodcastEpisode, queue?: PodcastEpisode[]) => {
@@ -394,7 +427,7 @@ export function PodcastMediaExperience({
 
   if (view.name === "player") {
     return (
-      <section className={getPlayerShellClassName(isEmbedded)}>
+      <section className={`${getPlayerShellClassName(isEmbedded)} kotoba-player-expand`}>
         <div className="mx-auto max-w-xl">
           <header className="flex items-center justify-between">
             <button
@@ -438,7 +471,10 @@ export function PodcastMediaExperience({
 
   if (view.name === "podcast") {
     return (
-      <section ref={episodeScrollContainerRef} className={getMediaShellClassName(isEmbedded)}>
+      <section
+        ref={episodeScrollContainerRef}
+        className={`${getMediaShellClassName(isEmbedded)} kotoba-screen-forward`}
+      >
         <div className="mx-auto max-w-xl space-y-5">
           <header
             className={`sticky top-[env(safe-area-inset-top)] z-30 -mx-2 flex items-center justify-between rounded-2xl bg-[#202124]/95 px-2 py-2 shadow-[0_10px_28px_rgb(0_0_0/0.24)] backdrop-blur transition duration-200 motion-reduce:transition-none ${
@@ -449,7 +485,7 @@ export function PodcastMediaExperience({
           >
             <button
               type="button"
-              onClick={() => setView({ name: "library" })}
+              onClick={returnToLibrary}
               className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#17191d] text-[#f2f3f5] outline-none focus:ring-4 focus:ring-[#8ab4f8]/25"
               aria-label="Back to podcasts"
             >
@@ -513,7 +549,10 @@ export function PodcastMediaExperience({
   }
 
   return (
-    <section className={getMediaShellClassName(isEmbedded)}>
+    <section
+      ref={libraryScrollContainerRef}
+      className={`${getMediaShellClassName(isEmbedded)} kotoba-screen-back`}
+    >
       <div className="mx-auto max-w-xl space-y-5">
         <header className="flex items-center justify-between">
           <button
@@ -562,7 +601,7 @@ export function PodcastMediaExperience({
               <button
                 key={`${podcast.source}:${podcast.id}`}
                 type="button"
-                onClick={() => void openPodcast(podcast)}
+                onClick={() => openPodcast(podcast)}
                 className="grid min-w-0 auto-rows-min text-left outline-none focus:ring-4 focus:ring-[#8ab4f8]/25"
               >
                 <PodcastArtwork title={podcast.title} imageUrl={podcast.imageUrl} large />

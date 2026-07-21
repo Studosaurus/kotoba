@@ -1,20 +1,12 @@
 "use client";
 
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Library,
-  Settings,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle2, Library, Settings } from "lucide-react";
 import Link from "next/link";
 import type { MutableRefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PlaybackState } from "@/domains/media/types";
 import { saveMicrophonePermissionState } from "@/lib/local-permission-settings";
-import {
-  preserveKnownStudyDays,
-  recordStudyReview,
-} from "@/lib/local-learning-activity";
+import { preserveKnownStudyDays, recordStudyReview } from "@/lib/local-learning-activity";
 import { useMediaPlayer } from "@/modules/media/components/media-player-provider";
 import type { CurrentEpisodePlayback } from "@/modules/media/local/local-media-types";
 import type {
@@ -73,6 +65,11 @@ export function VocabularyCaptureExperience() {
   const [validationErrors, setValidationErrors] = useState<VocabularyValidationErrors>({});
   const [deck, setDeck] = useState<LocalVocabularyDeck>(() => loadLocalVocabularyDeck());
   const [activeView, setActiveView] = useState<VocabularyView>("capture");
+  const viewScrollPositionsRef = useRef<Record<VocabularyView, number>>({
+    capture: 0,
+    saved: 0,
+    study: 0,
+  });
   const [lastSavedPhrase, setLastSavedPhrase] = useState<string>();
   const [duplicateMatch, setDuplicateMatch] = useState<{ id: string; phrase: string }>();
   const [savedCardToOpen, setSavedCardToOpen] = useState<string>();
@@ -147,6 +144,11 @@ export function VocabularyCaptureExperience() {
   };
 
   const changeActiveView = (nextView: VocabularyView) => {
+    const scrollContainer = document.querySelector<HTMLElement>(
+      "[data-vocabulary-scroll-container]",
+    );
+    viewScrollPositionsRef.current[activeView] = scrollContainer?.scrollTop ?? 0;
+
     if (nextView === "saved") {
       setUnseenSavedCount(0);
     } else {
@@ -154,6 +156,12 @@ export function VocabularyCaptureExperience() {
     }
 
     setActiveView(nextView);
+    window.requestAnimationFrame(() =>
+      scrollContainer?.scrollTo({
+        top: viewScrollPositionsRef.current[nextView],
+        behavior: "auto",
+      }),
+    );
   };
 
   const analyzePhrase = async (overridePhrase?: string) => {
@@ -318,9 +326,7 @@ export function VocabularyCaptureExperience() {
 
   const updateCardAudioClip = (cardId: string, audioClip: LocalAudioClip) => {
     const updatedVocabularyCards = deck.vocabularyCards.map((card) =>
-      card.id === cardId
-        ? { ...card, audioClip, updatedAt: new Date().toISOString() }
-        : card,
+      card.id === cardId ? { ...card, audioClip, updatedAt: new Date().toISOString() } : card,
     );
     const updatedCard = updatedVocabularyCards.find((card) => card.id === cardId);
     const hasAudioReviewCard = deck.reviewCards.some(
@@ -448,8 +454,7 @@ export function VocabularyCaptureExperience() {
       return;
     }
 
-    const SpeechRecognitionConstructor =
-      window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    const SpeechRecognitionConstructor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
 
     if (!SpeechRecognitionConstructor) {
       saveMicrophonePermissionState("unavailable");
@@ -607,7 +612,7 @@ export function VocabularyCaptureExperience() {
   return (
     <div
       data-vocabulary-scroll-container
-      className="fixed inset-0 z-50 overflow-y-auto bg-[#202124] px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] text-[#f8f9fb]"
+      className="kotoba-screen-enter fixed inset-0 z-50 overflow-y-auto bg-[#202124] px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] text-[#f8f9fb]"
     >
       <div className="mx-auto max-w-xl space-y-3">
         <header className="flex items-center justify-between">
@@ -638,63 +643,64 @@ export function VocabularyCaptureExperience() {
           onChange={changeActiveView}
         />
 
-        {activeView === "capture" ? (
-          <>
-            <CaptureInput
-              value={phrase}
-              disabled={isAnalyzing || isSaving}
-              isAnalyzing={isAnalyzing}
-              isRecording={isRecording}
-              connectorState={mediaPlayback ? { connected: true } : connectorState}
-              playback={activeMediaPlayback}
-              error={inputError}
-              onChange={(value) => {
-                setPhrase(value);
-                setLastSavedPhrase(undefined);
-                setInputError(undefined);
-              }}
-              onSubmit={() => void analyzePhrase()}
-              onClear={resetCapture}
-              onRecordStart={startRecording}
+        <div hidden={activeView !== "capture"} aria-hidden={activeView !== "capture"}>
+          <CaptureInput
+            value={phrase}
+            disabled={isAnalyzing || isSaving}
+            isAnalyzing={isAnalyzing}
+            isRecording={isRecording}
+            connectorState={mediaPlayback ? { connected: true } : connectorState}
+            playback={activeMediaPlayback}
+            error={inputError}
+            onChange={(value) => {
+              setPhrase(value);
+              setLastSavedPhrase(undefined);
+              setInputError(undefined);
+            }}
+            onSubmit={() => void analyzePhrase()}
+            onClear={resetCapture}
+            onRecordStart={startRecording}
+          />
+
+          {isAnalyzing ? <AnalyzingState /> : null}
+
+          {status === "analysis-error" ? (
+            <FailureState
+              message={analysisError ?? "Try again."}
+              onRetry={() => void analyzePhrase()}
             />
+          ) : null}
 
-            {isAnalyzing ? <AnalyzingState /> : null}
+          {lastSavedPhrase ? <SuccessState phrase={lastSavedPhrase} /> : null}
 
-            {status === "analysis-error" ? (
-              <FailureState message={analysisError ?? "Try again."} onRetry={() => void analyzePhrase()} />
-            ) : null}
+          {duplicateMatch ? (
+            <DuplicateState
+              phrase={duplicateMatch.phrase}
+              onOpen={() => {
+                setSavedCardToOpen(duplicateMatch.id);
+                changeActiveView("saved");
+              }}
+            />
+          ) : null}
 
-            {lastSavedPhrase ? <SuccessState phrase={lastSavedPhrase} /> : null}
+          {analysis && status !== "analysis-error" ? (
+            <EditableAnalysisCard
+              analysis={analysis}
+              errors={validationErrors}
+              isEnriching={isEnriching}
+              enrichmentError={enrichmentError}
+              isSaving={isSaving}
+              onChange={(nextAnalysis) => {
+                setAnalysis(nextAnalysis);
+                setDuplicateMatch(undefined);
+                setValidationErrors({});
+              }}
+              onSave={saveAnalysis}
+            />
+          ) : null}
+        </div>
 
-            {duplicateMatch ? (
-              <DuplicateState
-                phrase={duplicateMatch.phrase}
-                onOpen={() => {
-                  setSavedCardToOpen(duplicateMatch.id);
-                  changeActiveView("saved");
-                }}
-              />
-            ) : null}
-
-            {analysis && status !== "analysis-error" ? (
-              <EditableAnalysisCard
-                analysis={analysis}
-                errors={validationErrors}
-                isEnriching={isEnriching}
-                enrichmentError={enrichmentError}
-                isSaving={isSaving}
-                onChange={(nextAnalysis) => {
-                  setAnalysis(nextAnalysis);
-                  setDuplicateMatch(undefined);
-                  setValidationErrors({});
-                }}
-                onSave={saveAnalysis}
-              />
-            ) : null}
-          </>
-        ) : null}
-
-        {activeView === "saved" ? (
+        <div hidden={activeView !== "saved"} aria-hidden={activeView !== "saved"}>
           <SavedCardsView
             vocabularyCards={deck.vocabularyCards}
             reviewCards={deck.reviewCards}
@@ -705,16 +711,16 @@ export function VocabularyCaptureExperience() {
             onRetryDetails={retryCardDetails}
             onStudy={() => changeActiveView("study")}
           />
-        ) : null}
+        </div>
 
-        {activeView === "study" ? (
+        <div hidden={activeView !== "study"} aria-hidden={activeView !== "study"}>
           <StudyQueueView
             vocabularyCards={deck.vocabularyCards}
             reviewCards={deck.reviewCards}
             onReview={reviewCard}
             onCapture={() => changeActiveView("capture")}
           />
-        ) : null}
+        </div>
       </div>
     </div>
   );
@@ -1037,7 +1043,10 @@ function japaneseDuplicateCandidates(analysis: VocabularyAnalysis) {
 }
 
 function normalizeJapaneseForDuplicate(value: string) {
-  return value.normalize("NFKC").toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]/gu, "");
 }
 
 function vocabularyMeaningsOverlap(first: VocabularyAnalysis, second: VocabularyAnalysis) {
