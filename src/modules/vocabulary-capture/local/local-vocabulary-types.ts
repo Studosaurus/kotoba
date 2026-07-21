@@ -2,6 +2,7 @@ import type { VocabularyAnalysis } from "../types";
 
 export type MasteryLevel = "new" | "learning" | "familiar" | "strong" | "mastered";
 export type ReviewRating = "again" | "hard" | "good" | "easy";
+export type ReviewOutcome = "correct" | "incorrect";
 export type ReviewCardType = "jp_to_en" | "en_to_jp" | "audio_to_en";
 
 export interface LocalAudioClip {
@@ -30,6 +31,9 @@ export interface LocalReviewCard {
   intervalDays: number;
   ease: number;
   lapseCount: number;
+  recentOutcomes?: ReviewOutcome[];
+  consecutiveCorrect?: number;
+  consecutiveIncorrect?: number;
   createdAt: string;
   updatedAt: string;
   lastReviewedAt?: string;

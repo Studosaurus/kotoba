@@ -2,6 +2,7 @@ import type {
   LocalReviewCard,
   LocalVocabularyCard,
   MasteryLevel,
+  ReviewOutcome,
   ReviewRating,
 } from "./local-vocabulary-types";
 
@@ -48,6 +49,7 @@ export function applyReviewRating(
 ): LocalReviewCard {
   const next = calculateNextSchedule(card, rating, reviewedAt);
   const wasMiss = rating === "again";
+  const outcome: ReviewOutcome = wasMiss ? "incorrect" : "correct";
   const successfulReviewDays = wasMiss
     ? (card.successfulReviewDays ?? [])
     : addSuccessfulReviewDay(card.successfulReviewDays ?? [], reviewedAt);
@@ -57,6 +59,9 @@ export function applyReviewRating(
     correctCount: card.correctCount + (wasMiss ? 0 : 1),
     incorrectCount: card.incorrectCount + (wasMiss ? 1 : 0),
     lapseCount: card.lapseCount + (wasMiss ? 1 : 0),
+    recentOutcomes: [...(card.recentOutcomes ?? []), outcome].slice(-10),
+    consecutiveCorrect: wasMiss ? 0 : (card.consecutiveCorrect ?? 0) + 1,
+    consecutiveIncorrect: wasMiss ? (card.consecutiveIncorrect ?? 0) + 1 : 0,
     intervalDays: next.intervalDays,
     ease: next.ease,
     lastReviewedAt: reviewedAt.toISOString(),
@@ -191,6 +196,23 @@ function calculateNextSchedule(
     };
   }
 
+  const missesBeforeRecovery = card.consecutiveIncorrect ?? 0;
+
+  if (rating === "good" && missesBeforeRecovery > 0) {
+    const recoveryDelayMs =
+      missesBeforeRecovery >= 3
+        ? 4 * 60 * MINUTE_MS
+        : missesBeforeRecovery === 2
+          ? 12 * 60 * MINUTE_MS
+          : DAY_MS;
+
+    return {
+      intervalDays: recoveryDelayMs < DAY_MS ? 0 : 1,
+      ease: Math.max(1.3, card.ease - Math.min(0.15, missesBeforeRecovery * 0.05)),
+      nextDueAt: new Date(reviewedAt.getTime() + recoveryDelayMs),
+    };
+  }
+
   if (rating === "hard") {
     const intervalDays = Math.max(1, Math.round((card.intervalDays || 1) * 1.2));
     return {
@@ -210,22 +232,81 @@ function calculateNextSchedule(
     };
   }
 
-  const intervalDays = Math.max(3, Math.round((card.intervalDays || 1) * card.ease));
+  if (card.intervalDays <= 0) {
+    return {
+      intervalDays: 1,
+      ease: card.ease,
+      nextDueAt: new Date(reviewedAt.getTime() + DAY_MS),
+    };
+  }
+
+  if (card.intervalDays <= 1) {
+    return {
+      intervalDays: 3,
+      ease: card.ease,
+      nextDueAt: new Date(reviewedAt.getTime() + 3 * DAY_MS),
+    };
+  }
+
+  if (card.intervalDays <= 3) {
+    return {
+      intervalDays: 7,
+      ease: card.ease,
+      nextDueAt: new Date(reviewedAt.getTime() + 7 * DAY_MS),
+    };
+  }
+
+  const inferredMultiplier = getInferredIntervalMultiplier(card);
+  const intervalDays = Math.max(
+    card.intervalDays + 1,
+    Math.round(card.intervalDays * inferredMultiplier),
+  );
   return {
     intervalDays,
-    ease: card.ease,
+    ease: Math.min(3, Math.max(1.3, card.ease + (inferredMultiplier - 2) * 0.05)),
     nextDueAt: new Date(reviewedAt.getTime() + intervalDays * DAY_MS),
   };
 }
 
+function getInferredIntervalMultiplier(card: LocalReviewCard) {
+  const outcomes = [...(card.recentOutcomes ?? []), "correct"].slice(-8);
+  const correctCount = outcomes.filter((outcome) => outcome === "correct").length;
+  const accuracy = outcomes.length > 0 ? correctCount / outcomes.length : 1;
+  const nextCorrectStreak = (card.consecutiveCorrect ?? 0) + 1;
+
+  if (accuracy < 0.6) {
+    return 1.3;
+  }
+
+  if (accuracy >= 0.85 && nextCorrectStreak >= 3) {
+    return 2.6;
+  }
+
+  return 2;
+}
+
 export function recalculateReviewCardMastery(card: LocalReviewCard): LocalReviewCard {
   const successfulReviewDays = normalizeSuccessfulReviewDays(card);
-  const normalizedCard = { ...card, successfulReviewDays };
+  const normalizedCard = {
+    ...card,
+    successfulReviewDays,
+    recentOutcomes: card.recentOutcomes ?? [],
+    consecutiveCorrect: card.consecutiveCorrect ?? inferConsecutiveCorrect(card),
+    consecutiveIncorrect: card.consecutiveIncorrect ?? inferConsecutiveIncorrect(card),
+  };
 
   return {
     ...normalizedCard,
     masteryLevel: deriveMastery(normalizedCard),
   };
+}
+
+function inferConsecutiveCorrect(card: LocalReviewCard) {
+  return card.lastLapseAt === card.lastReviewedAt ? 0 : Math.min(card.correctCount, 3);
+}
+
+function inferConsecutiveIncorrect(card: LocalReviewCard) {
+  return card.lastLapseAt === card.lastReviewedAt ? 1 : 0;
 }
 
 function deriveMastery(card: LocalReviewCard): MasteryLevel {

@@ -51,6 +51,7 @@ export function StudyQueueView({
   const dueCards = useMemo(() => getDueReviewCards(reviewCards), [reviewCards]);
   const [isSessionStarted, setIsSessionStarted] = useState(false);
   const [sessionQueue, setSessionQueue] = useState<string[]>([]);
+  const [sessionMissCounts, setSessionMissCounts] = useState<Record<string, number>>({});
   const [sessionTotal, setSessionTotal] = useState(0);
   const [isRevealed, setIsRevealed] = useState(false);
   const [completedInSession, setCompletedInSession] = useState(0);
@@ -124,6 +125,7 @@ export function StudyQueueView({
                 setSessionQueue(queue);
                 setSessionTotal(queue.length);
                 setCompletedInSession(0);
+                setSessionMissCounts({});
                 setIsSessionStarted(true);
               }}
               className="min-h-11 shrink-0 rounded-full bg-[#a8c7fa] px-4 text-sm font-semibold text-[#062e6f] outline-none focus:ring-4 focus:ring-[#a8c7fa]/30"
@@ -356,8 +358,18 @@ export function StudyQueueView({
               if (answerResult?.isCorrect) {
                 setCompletedInSession((count) => count + 1);
                 setSessionQueue((queue) => queue.slice(1));
+                setSessionMissCounts((counts) => {
+                  const nextCounts = { ...counts };
+                  delete nextCounts[activeReviewCard.id];
+                  return nextCounts;
+                });
               } else {
-                setSessionQueue((queue) => reinsertMissedCard(queue));
+                const nextMissCount = (sessionMissCounts[activeReviewCard.id] ?? 0) + 1;
+                setSessionMissCounts((counts) => ({
+                  ...counts,
+                  [activeReviewCard.id]: nextMissCount,
+                }));
+                setSessionQueue((queue) => reinsertMissedCard(queue, nextMissCount));
               }
               setIsRevealed(false);
               setShowReading(false);
@@ -833,11 +845,16 @@ function buildSessionQueue(cards: LocalReviewCard[]) {
   return ordered.map((card) => card.id);
 }
 
-function reinsertMissedCard(queue: string[]) {
+function reinsertMissedCard(queue: string[], missCount: number) {
   const [missedCardId, ...remaining] = queue;
   if (!missedCardId) return remaining;
 
-  const insertionIndex = Math.min(randomInteger(3, 8), remaining.length);
+  const [minimumOffset, maximumOffset] =
+    missCount >= 3 ? [2, 3] : missCount === 2 ? [3, 5] : [5, 7];
+  const insertionIndex = Math.min(
+    randomInteger(minimumOffset, maximumOffset),
+    remaining.length,
+  );
   const nextQueue = [...remaining];
   nextQueue.splice(insertionIndex, 0, missedCardId);
   return nextQueue;
