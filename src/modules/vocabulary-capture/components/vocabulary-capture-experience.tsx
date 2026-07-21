@@ -92,6 +92,8 @@ export function VocabularyCaptureExperience() {
   const audioClipPromiseRef = useRef<Promise<LocalAudioClip | null> | null>(null);
   const activeAnalysisIdRef = useRef<string | null>(null);
   const savedAnalysisTargetsRef = useRef<Record<string, string>>({});
+  const completedEnrichmentsRef = useRef<Record<string, VocabularyAnalysis>>({});
+  const inFlightEnrichmentIdsRef = useRef(new Set<string>());
   const transcriptRef = useRef("");
   const shouldAnalyzeOnSpeechEndRef = useRef(false);
   const hasFinalizedSpeechRef = useRef(false);
@@ -191,6 +193,7 @@ export function VocabularyCaptureExperience() {
       setPhrase(result.analysis.originalPhrase);
       setStatus("ready");
       setIsEnriching(true);
+      inFlightEnrichmentIdsRef.current.add(analysisId);
       void enrichAnalysisInBackground(analysisId, nextAnalysis);
     } else {
       setStatus("analysis-error");
@@ -203,8 +206,12 @@ export function VocabularyCaptureExperience() {
     quickAnalysis: VocabularyAnalysis,
   ) => {
     const result = await enrichVocabularyAnalysisSafely(quickAnalysis);
+    inFlightEnrichmentIdsRef.current.delete(analysisId);
 
     if (!result.ok) {
+      delete savedAnalysisTargetsRef.current[analysisId];
+      delete completedEnrichmentsRef.current[analysisId];
+
       if (activeAnalysisIdRef.current === analysisId) {
         setEnrichmentError(result.error);
         setIsEnriching(false);
@@ -212,6 +219,8 @@ export function VocabularyCaptureExperience() {
 
       return;
     }
+
+    completedEnrichmentsRef.current[analysisId] = result.analysis;
 
     if (activeAnalysisIdRef.current === analysisId) {
       setAnalysis(result.analysis);
@@ -225,6 +234,9 @@ export function VocabularyCaptureExperience() {
     if (savedCardId) {
       updateSavedCardAnalysis(savedCardId, result.analysis);
       delete savedAnalysisTargetsRef.current[analysisId];
+      delete completedEnrichmentsRef.current[analysisId];
+    } else {
+      delete completedEnrichmentsRef.current[analysisId];
     }
   };
 
@@ -254,12 +266,20 @@ export function VocabularyCaptureExperience() {
 
     setStatus("saving");
     await new Promise((resolve) => setTimeout(resolve, SAVE_LATENCY_MS));
-    const savedPhrase = analysis.originalPhrase;
-    const vocabularyCard = createLocalVocabularyCard(analysis, pendingAudioClip);
     const currentAnalysisId = activeAnalysisIdRef.current;
+    const completedEnrichment = currentAnalysisId
+      ? completedEnrichmentsRef.current[currentAnalysisId]
+      : undefined;
+    const analysisToSave = completedEnrichment ?? analysis;
+    const savedPhrase = analysisToSave.originalPhrase;
+    const vocabularyCard = createLocalVocabularyCard(analysisToSave, pendingAudioClip);
 
-    if (currentAnalysisId && isEnriching) {
-      savedAnalysisTargetsRef.current[currentAnalysisId] = vocabularyCard.id;
+    if (currentAnalysisId) {
+      if (completedEnrichment) {
+        delete completedEnrichmentsRef.current[currentAnalysisId];
+      } else if (inFlightEnrichmentIdsRef.current.has(currentAnalysisId)) {
+        savedAnalysisTargetsRef.current[currentAnalysisId] = vocabularyCard.id;
+      }
     }
 
     activeAnalysisIdRef.current = null;
