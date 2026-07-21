@@ -39,6 +39,8 @@ export function SavedCardsView({
 }: SavedCardsViewProps) {
   const [query, setQuery] = useState("");
   const [selectedCardId, setSelectedCardId] = useState<string>();
+  const rootRef = useRef<HTMLElement | null>(null);
+  const listScrollPositionRef = useRef(0);
   const selectedCard = selectedCardId
     ? vocabularyCards.find((card) => card.id === selectedCardId)
     : undefined;
@@ -65,26 +67,46 @@ export function SavedCardsView({
   }, [vocabularyCards, query]);
   const masteryDistribution = getMasteryDistribution(reviewCards);
 
+  const getScrollContainer = () =>
+    rootRef.current?.closest<HTMLElement>("[data-vocabulary-scroll-container]") ?? null;
+
+  const openCardDetail = (cardId: string) => {
+    const scrollContainer = getScrollContainer();
+    listScrollPositionRef.current = scrollContainer?.scrollTop ?? 0;
+    setSelectedCardId(cardId);
+    window.requestAnimationFrame(() => scrollContainer?.scrollTo({ top: 0, behavior: "auto" }));
+  };
+
+  const returnToList = () => {
+    const scrollContainer = getScrollContainer();
+    setSelectedCardId(undefined);
+    window.requestAnimationFrame(() =>
+      scrollContainer?.scrollTo({ top: listScrollPositionRef.current, behavior: "auto" }),
+    );
+  };
+
   if (selectedCard) {
     return (
-      <SavedCardDetail
-        card={selectedCard}
-        reviewCards={reviewCards}
-        onBack={() => setSelectedCardId(undefined)}
-        onDelete={(cardId) => {
-          onDelete(cardId);
-          setSelectedCardId(undefined);
-        }}
-        onUpdateAudioClip={(audioClip) => onUpdateAudioClip(selectedCard.id, audioClip)}
-        onUpdateSourceContext={(sourceContext) =>
-          onUpdateSourceContext(selectedCard.id, sourceContext)
-        }
-      />
+      <div ref={(node) => { rootRef.current = node; }}>
+        <SavedCardDetail
+          card={selectedCard}
+          reviewCards={reviewCards}
+          onBack={returnToList}
+          onDelete={(cardId) => {
+            onDelete(cardId);
+            returnToList();
+          }}
+          onUpdateAudioClip={(audioClip) => onUpdateAudioClip(selectedCard.id, audioClip)}
+          onUpdateSourceContext={(sourceContext) =>
+            onUpdateSourceContext(selectedCard.id, sourceContext)
+          }
+        />
+      </div>
     );
   }
 
   return (
-    <section className="space-y-4">
+    <section ref={(node) => { rootRef.current = node; }} className="space-y-4">
       <div className="rounded-[1.5rem] bg-[#17191d] p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -138,7 +160,7 @@ export function SavedCardsView({
                 <div className="flex items-start justify-between gap-3">
                   <button
                     type="button"
-                    onClick={() => setSelectedCardId(card.id)}
+                    onClick={() => openCardDetail(card.id)}
                     className="min-w-0 flex-1 text-left outline-none focus:ring-4 focus:ring-[#8ab4f8]/20"
                   >
                     <p lang="ja" className="text-xl font-medium leading-snug text-[#f8f9fb]">

@@ -549,7 +549,10 @@ export function VocabularyCaptureExperience() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-[#202124] px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] text-[#f8f9fb]">
+    <div
+      data-vocabulary-scroll-container
+      className="fixed inset-0 z-50 overflow-y-auto bg-[#202124] px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] text-[#f8f9fb]"
+    >
       <div className="mx-auto max-w-xl space-y-3">
         <header className="flex items-center justify-between">
           <Link
