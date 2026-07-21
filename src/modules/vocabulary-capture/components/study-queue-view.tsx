@@ -723,9 +723,11 @@ function FlashcardBack({
       <p className="mt-4 text-base text-[#f8f9fb]">{vocabularyCard.analysis.conciseMeaning}</p>
       <div className="mt-4 border-t border-[#2b2f36] pt-4">
         <p className="text-sm leading-6 text-[#bdc1c6]">{vocabularyCard.analysis.grammarExplanation}</p>
-        <p lang="ja" className="mt-3 text-base text-[#f8f9fb]">
-          {vocabularyCard.analysis.exampleSentence}
-        </p>
+        <ReadingReveal
+          phrase={vocabularyCard.analysis.exampleSentence}
+          reading={vocabularyCard.analysis.exampleSentenceReading}
+          className="mt-3 text-base leading-6 text-[#f8f9fb]"
+        />
         <p className="mt-1 text-sm text-[#bdc1c6]">
           {vocabularyCard.analysis.exampleSentenceTranslation}
         </p>
