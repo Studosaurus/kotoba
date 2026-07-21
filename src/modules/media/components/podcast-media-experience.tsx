@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   CheckCircle2,
   ChevronDown,
-  Loader2,
   Pause,
   Play,
   Plus,
@@ -81,6 +80,7 @@ export function PodcastMediaExperience({
   const [statsVersion, setStatsVersion] = useState(0);
   const episodeScrollContainerRef = useRef<HTMLElement | null>(null);
   const libraryScrollContainerRef = useRef<HTMLElement | null>(null);
+  const podcastLoadIdRef = useRef(0);
   const episodeHeaderLastScrollTopRef = useRef(0);
   const episodeHeaderDirectionRef = useRef<"up" | "down">("up");
   const episodeHeaderTravelRef = useRef(0);
@@ -261,9 +261,14 @@ export function PodcastMediaExperience({
   }, []);
 
   const loadPodcast = async (podcast: PodcastSource) => {
+    const loadId = ++podcastLoadIdRef.current;
     setView({ name: "podcast", podcast, isLoading: true });
 
     const result = await fetchPodcastFeed(podcast.feedUrl);
+
+    if (loadId !== podcastLoadIdRef.current) {
+      return;
+    }
 
     if (result.ok) {
       const hydratedPodcast = {
@@ -294,6 +299,7 @@ export function PodcastMediaExperience({
   };
 
   const returnToLibrary = () => {
+    podcastLoadIdRef.current += 1;
     const openedFromLibrary =
       window.sessionStorage.getItem("kotoba:podcast-opened-from-library") === "true";
     window.sessionStorage.removeItem("kotoba:podcast-opened-from-library");
@@ -359,6 +365,7 @@ export function PodcastMediaExperience({
     lastRoutePodcastIdRef.current = initialPodcastId;
 
     if (!initialPodcastId) {
+      podcastLoadIdRef.current += 1;
       void Promise.resolve().then(() => setView({ name: "library" }));
       window.requestAnimationFrame(() => {
         const savedScrollTop = Number(
@@ -421,7 +428,10 @@ export function PodcastMediaExperience({
 
   const captureCurrentPlayback = () => {
     player.pause();
-    onCollapse?.();
+    if (onCollapse) {
+      onCollapse();
+      return;
+    }
     router.push("/modules/vocabulary-capture");
   };
 
@@ -507,10 +517,7 @@ export function PodcastMediaExperience({
           </header>
 
           {view.isLoading ? (
-            <section className="rounded-[1.5rem] bg-[#17191d] p-5 text-center">
-              <Loader2 className="mx-auto h-6 w-6 animate-spin text-[#a8c7fa] motion-reduce:animate-none" />
-              <p className="mt-3 text-sm text-[#bdc1c6]">Loading episodes</p>
-            </section>
+            <PodcastLoadingSkeleton podcast={view.podcast} />
           ) : view.error ? (
             <section className="rounded-[1.5rem] bg-[#3a1f26] p-5 text-sm text-[#ffb1c0]">
               {view.error}
@@ -736,6 +743,35 @@ function PodcastHeader({
         ) : null}
       </div>
     </section>
+  );
+}
+
+function PodcastLoadingSkeleton({ podcast }: { podcast: PodcastSource }) {
+  return (
+    <div
+      className="animate-pulse space-y-5 motion-reduce:animate-none"
+      aria-label="Loading episodes"
+    >
+      <section className="-mx-4 -mt-5 min-h-[18rem] bg-[linear-gradient(180deg,#6f5a49_0%,#302a27_52%,#202124_100%)] px-4 pb-5 pt-5">
+        <div className="h-14 rounded-md bg-white/10" />
+        <div className="mt-7 flex items-end gap-5">
+          <div className="h-32 w-32 shrink-0 rounded-xl bg-white/15" />
+          <div className="min-w-0 flex-1 space-y-3 pb-1">
+            <div className="h-8 w-4/5 rounded-lg bg-white/15" />
+            <div className="h-4 w-full rounded bg-white/10" />
+            <div className="h-4 w-2/3 rounded bg-white/10" />
+          </div>
+        </div>
+        <p className="sr-only">Loading {podcast.title}</p>
+      </section>
+      {[0, 1, 2].map((item) => (
+        <div key={item} className="min-h-28 rounded-[1.25rem] bg-[#17191d] p-4">
+          <div className="h-5 w-4/5 rounded bg-white/10" />
+          <div className="mt-3 h-4 w-2/5 rounded bg-white/5" />
+          <div className="mt-5 h-3 w-full rounded bg-white/5" />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -1273,13 +1309,13 @@ function PodcastArtwork({
 
 function getMediaShellClassName(isEmbedded: boolean) {
   return isEmbedded
-    ? "kotoba-screen-enter h-full overflow-y-auto overscroll-contain bg-[#202124] px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] pt-[calc(1.25rem+env(safe-area-inset-top))] text-[#f8f9fb]"
-    : "kotoba-screen-enter fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-[#202124] px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] pt-[calc(1.25rem+env(safe-area-inset-top))] text-[#f8f9fb]";
+    ? "h-full overflow-y-auto overscroll-contain bg-[#202124] px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] pt-[calc(1.25rem+env(safe-area-inset-top))] text-[#f8f9fb]"
+    : "fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-[#202124] px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] pt-[calc(1.25rem+env(safe-area-inset-top))] text-[#f8f9fb]";
 }
 
 function getPlayerShellClassName(isEmbedded: boolean) {
   const base =
-    "kotoba-screen-enter overflow-y-auto overscroll-contain bg-[radial-gradient(circle_at_top,#80694f_0%,#3d3326_42%,#101113_100%)] px-6 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] text-[#f8f9fb]";
+    "overflow-y-auto overscroll-contain bg-[radial-gradient(circle_at_top,#80694f_0%,#3d3326_42%,#101113_100%)] px-6 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))] text-[#f8f9fb]";
 
   return isEmbedded ? `h-full ${base}` : `fixed inset-0 z-50 ${base}`;
 }

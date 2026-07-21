@@ -2,35 +2,73 @@
 
 import { ChevronDown, Pause, Play } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { PodcastMediaExperience } from "./podcast-media-experience";
 import { useMediaPlayer } from "./media-player-provider";
 
 export function GlobalMiniPlayer() {
   const router = useRouter();
   const { playback, isExpanded, setExpanded, togglePlay, seek } = useMediaPlayer();
+  const [isClosing, setIsClosing] = useState(false);
+  const closeTimerRef = useRef<number | null>(null);
 
   const durationMs = playback?.durationMs ?? 0;
   const progress = playback && durationMs > 0 ? playback.positionMs / durationMs : 0;
 
+  useEffect(
+    () => () => {
+      if (closeTimerRef.current) {
+        window.clearTimeout(closeTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const expandPlayer = () => {
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    setIsClosing(false);
+    setExpanded(true);
+  };
+
+  const closePlayer = (navigate: () => void) => {
+    if (isClosing) {
+      return;
+    }
+
+    setIsClosing(true);
+    closeTimerRef.current = window.setTimeout(() => {
+      setExpanded(false);
+      setIsClosing(false);
+      closeTimerRef.current = null;
+      navigate();
+    }, 180);
+  };
+
   return (
     <>
       {isExpanded ? (
-        <div className="fixed inset-0 z-[70] bg-[#202124] text-[#f8f9fb]">
+        <div
+          className={`fixed inset-0 z-[70] bg-[#202124] text-[#f8f9fb] ${
+            isClosing ? "kotoba-player-collapse" : ""
+          }`}
+        >
           <PodcastMediaExperience
             isEmbedded
             initialView="player"
             onCollapse={() => {
-              setExpanded(false);
-              router.replace("/modules/vocabulary-capture");
+              closePlayer(() => router.replace("/modules/vocabulary-capture"));
             }}
             onBrowseShows={() => {
-              setExpanded(false);
-              router.push("/modules/media");
+              closePlayer(() => router.push("/modules/media"));
             }}
             onOpenCurrentShow={() => {
-              setExpanded(false);
-              router.push(
-                `/modules/media?podcast=${encodeURIComponent(playback?.podcastId ?? "")}`,
+              closePlayer(() =>
+                router.push(
+                  `/modules/media?podcast=${encodeURIComponent(playback?.podcastId ?? "")}`,
+                ),
               );
             }}
           />
@@ -68,7 +106,7 @@ export function GlobalMiniPlayer() {
               </button>
               <button
                 type="button"
-                onClick={() => setExpanded(true)}
+                onClick={expandPlayer}
                 className="min-w-0 flex-1 text-left outline-none focus:ring-4 focus:ring-[#8ab4f8]/20"
               >
                 <p className="truncate text-sm font-semibold">
@@ -82,7 +120,7 @@ export function GlobalMiniPlayer() {
               </button>
               <button
                 type="button"
-                onClick={() => setExpanded(true)}
+                onClick={expandPlayer}
                 className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#bdc1c6] outline-none focus:ring-4 focus:ring-[#8ab4f8]/20"
                 aria-label="Expand player"
               >
