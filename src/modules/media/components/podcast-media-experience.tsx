@@ -358,6 +358,10 @@ export function PodcastMediaExperience({
   }, [initialView, player.playback, podcasts, view.name, playerHasPreviousView]);
 
   useEffect(() => {
+    if (initialView === "player") {
+      return;
+    }
+
     if (initialPodcastId === lastRoutePodcastIdRef.current) {
       return;
     }
@@ -380,7 +384,7 @@ export function PodcastMediaExperience({
     if (podcast) {
       void Promise.resolve().then(() => loadPodcast(podcast));
     }
-  }, [initialPodcastId, podcasts]);
+  }, [initialPodcastId, initialView, podcasts]);
 
   const addPodcast = async () => {
     const trimmedFeedUrl = feedUrl.trim();
